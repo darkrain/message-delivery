@@ -19,6 +19,73 @@ It is intentionally not tied to any product domain. Producers such as `auth-serv
 - Health endpoint
 - Makefile, systemd unit, Dockerfile, `.deb` packaging
 
+## Architecture
+
+`message-delivery` is a worker service, not a domain API. It does not know how users register, reset passwords, create orders or receive product notifications. Producers send generic delivery events, and this service only handles message rendering, provider choice, delivery and result reporting.
+
+Main components:
+
+| Component | Responsibility |
+|---|---|
+| `cmd/main.go` | Loads config, builds dependencies, starts health server and worker loop. |
+| `internal/config` | Reads JSON config, applies env overrides, validates required broker/provider/template settings. |
+| `internal/broker` | Owns RabbitMQ connection, exchange/queue/DLQ declaration, consuming request events and publishing result events. |
+| `internal/worker` | Reads RabbitMQ deliveries, decodes requests, acknowledges successful handling and dead-letters invalid messages. |
+| `internal/delivery` | Contains request/result contracts and the orchestration algorithm. |
+| `internal/template` | Renders configured templates using event variables and locale fallback. |
+| `internal/provider` | Defines provider interfaces, registry, fake/unavailable providers and concrete adapters. |
+| `tests/integration` | Runs real RabbitMQ consume/publish flow in Docker Compose. |
+
+Processing flow:
+
+```text
+producer
+  -> RabbitMQ exchange messages.events
+  -> routing key message.delivery.requested
+  -> queue message.delivery.requests
+  -> worker
+  -> validate event
+  -> render template
+  -> choose provider plan
+  -> send via provider adapter
+  -> publish message.delivery.result
+```
+
+Failure flow:
+
+```text
+invalid JSON / invalid contract
+  -> message is rejected without requeue
+  -> RabbitMQ routes it to message.delivery.requests.dlq
+
+provider returns undeliverable
+  -> orchestrator tries the next provider if fallback is enabled
+
+provider returns failed
+  -> orchestrator stops and publishes failed result
+
+worker/orchestrator internal error
+  -> message is nacked with requeue=true
+```
+
+Idempotency is currently in-memory and keyed by `event_id`. This is enough for local/test runs and protects against duplicate delivery while the process is alive. Production-grade idempotency should be moved to Redis/PostgreSQL before horizontal scaling.
+
+Provider adapters are intentionally isolated behind:
+
+```text
+Send(ctx, message) -> Result
+```
+
+That keeps Telegram, WhatsApp, SMS, SMTP, SES, Mailgun or other providers replaceable without changing producer contracts. Auth codes and future notifications use the same delivery mechanism; only `template`, `purpose`, `recipient_type`, `recipient` and `variables` differ.
+
+Configuration is split into:
+
+- tracked JSON config for non-secret routing, templates and adapter shape;
+- env/runtime secrets for tokens, passwords and external credentials;
+- env overrides for deployment-specific broker/port settings.
+
+This repository contains the service artifact and local/test runtime. Kubernetes or production infrastructure manifests should live in a separate deploy repository.
+
 ## Event Contract
 
 ### Request
@@ -128,6 +195,203 @@ For local tests, `message-delivery.example.json` uses fake phone providers. To s
 ```
 
 The token must be exported in the runtime environment, not committed to the config file.
+
+## Usage
+
+`message-delivery` has no public send HTTP API. Producers use RabbitMQ:
+
+1. Publish a `message.delivery.requested` JSON event to the configured exchange.
+2. Use routing key `message.delivery.requested`.
+3. Read `message.delivery.result` events from a queue bound to routing key `message.delivery.result`.
+4. Match the result with the original request by `request_event_id`.
+
+Default broker settings from `message-delivery.example.json`:
+
+| Setting | Value |
+|---|---|
+| Exchange | `messages.events` |
+| Exchange type | `topic` |
+| Request routing key | `message.delivery.requested` |
+| Result routing key | `message.delivery.result` |
+| Consumer queue | `message.delivery.requests` |
+| Dead-letter queue | `message.delivery.requests.dlq` |
+
+### Start with Isolated RabbitMQ
+
+For a fully local smoke test:
+
+```bash
+docker compose -f docker-compose.integration.yml up --build rabbitmq message-delivery
+```
+
+RabbitMQ management UI is exposed on:
+
+```text
+http://localhost:15674
+```
+
+Default credentials in the integration compose are `guest` / `guest`.
+
+### Publish a Phone Verification Code
+
+Example request for phone verification:
+
+```json
+{
+  "version": "v1",
+  "event_id": "manual-phone-1",
+  "type": "message.delivery.requested",
+  "source": "auth-service",
+  "template": "auth_verification_code",
+  "purpose": "registration_verification",
+  "recipient_type": "phone",
+  "recipient": "+15551234567",
+  "variables": {
+    "code": "123456",
+    "ttl_sec": "300"
+  },
+  "user_id": 123,
+  "created_at": "2026-07-18T18:00:00Z",
+  "delivery": {
+    "selected_provider": "",
+    "provider_chain": ["telegram", "whatsapp", "sms"],
+    "allow_fallback": true
+  },
+  "metadata": {
+    "locale": "en",
+    "device_uid": "device-1"
+  }
+}
+```
+
+Publish it with `rabbitmqadmin` against the integration RabbitMQ:
+
+```bash
+rabbitmqadmin \
+  --host localhost \
+  --port 15674 \
+  --username guest \
+  --password guest \
+  publish \
+  exchange=messages.events \
+  routing_key=message.delivery.requested \
+  payload='{"version":"v1","event_id":"manual-phone-1","type":"message.delivery.requested","source":"auth-service","template":"auth_verification_code","purpose":"registration_verification","recipient_type":"phone","recipient":"+15551234567","variables":{"code":"123456","ttl_sec":"300"},"user_id":123,"created_at":"2026-07-18T18:00:00Z","delivery":{"selected_provider":"","provider_chain":["telegram","whatsapp","sms"],"allow_fallback":true},"metadata":{"locale":"en","device_uid":"device-1"}}' \
+  properties='{"content_type":"application/json","delivery_mode":2}'
+```
+
+With the default example config this uses fake providers: Telegram and WhatsApp return `undeliverable`, then SMS returns `sent`.
+
+### Publish an Email Message
+
+Example request for email delivery:
+
+```json
+{
+  "version": "v1",
+  "event_id": "manual-email-1",
+  "type": "message.delivery.requested",
+  "source": "auth-service",
+  "template": "auth_password_reset",
+  "purpose": "password_reset",
+  "recipient_type": "email",
+  "recipient": "user@example.com",
+  "variables": {
+    "code": "654321",
+    "ttl_sec": "300"
+  },
+  "created_at": "2026-07-18T18:00:00Z",
+  "delivery": {
+    "selected_provider": "",
+    "provider_chain": [],
+    "allow_fallback": true
+  },
+  "metadata": {
+    "locale": "en"
+  }
+}
+```
+
+For email, the service uses `Providers.Email.DefaultProvider` unless `delivery.selected_provider` is set.
+
+### Read Delivery Results
+
+Create a temporary result queue and bind it to the result routing key:
+
+```bash
+rabbitmqadmin \
+  --host localhost \
+  --port 15674 \
+  --username guest \
+  --password guest \
+  declare queue name=message.delivery.results.manual durable=false
+
+rabbitmqadmin \
+  --host localhost \
+  --port 15674 \
+  --username guest \
+  --password guest \
+  declare binding \
+  source=messages.events \
+  destination_type=queue \
+  destination=message.delivery.results.manual \
+  routing_key=message.delivery.result
+```
+
+Read one result:
+
+```bash
+rabbitmqadmin \
+  --host localhost \
+  --port 15674 \
+  --username guest \
+  --password guest \
+  get queue=message.delivery.results.manual count=1 ackmode=ack_requeue_false
+```
+
+Expected result shape:
+
+```json
+{
+  "version": "v1",
+  "event_id": "generated-result-id",
+  "type": "message.delivery.result",
+  "request_event_id": "manual-phone-1",
+  "status": "sent",
+  "recipient_type": "phone",
+  "recipient": "+15551234567",
+  "provider": "sms",
+  "attempt": 3,
+  "created_at": "2026-07-18T18:00:01Z"
+}
+```
+
+### Provider Selection
+
+To force Telegram only:
+
+```json
+{
+  "delivery": {
+    "selected_provider": "telegram",
+    "provider_chain": ["telegram", "whatsapp", "sms"],
+    "allow_fallback": false
+  }
+}
+```
+
+To prefer WhatsApp but allow fallback:
+
+```json
+{
+  "delivery": {
+    "selected_provider": "whatsapp",
+    "provider_chain": ["telegram", "whatsapp", "sms"],
+    "allow_fallback": true
+  }
+}
+```
+
+The selected provider is tried first. If it returns `undeliverable` and fallback is enabled, the service continues through the configured chain without retrying the same provider twice.
 
 ## Local Run
 
