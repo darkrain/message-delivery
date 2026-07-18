@@ -197,10 +197,13 @@ Telegram Gateway live test:
 export TELEGRAM_GATEWAY_LIVE_TEST=1
 export TELEGRAM_GATEWAY_API_TOKEN=...
 export TELEGRAM_GATEWAY_TEST_PHONE=+15551234567
+# Optional: force an exact verification code instead of a random one.
+export TELEGRAM_GATEWAY_TEST_CODE=123456
 go test ./internal/provider/telegram -run TestGatewaySendVerificationMessageLive -count=1
 ```
 
 Use the phone number tied to the Telegram Gateway account when you want Telegram's free test delivery path. The number must be in E.164 format.
+Run with `-v` to see the exact code sent by the test.
 
 ## Build
 

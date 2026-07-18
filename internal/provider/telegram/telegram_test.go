@@ -2,7 +2,9 @@ package telegram
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -76,7 +78,12 @@ func TestGatewaySendVerificationMessageLive(t *testing.T) {
 		t.Skip("set TELEGRAM_GATEWAY_TEST_PHONE in E.164 format to run Telegram Gateway live test")
 	}
 
-	code := time.Now().UTC().Format("040506")
+	code := os.Getenv("TELEGRAM_GATEWAY_TEST_CODE")
+	if code == "" {
+		code = randomCode(t)
+	}
+	t.Logf("sending Telegram Gateway verification code %s to %s", code, phone)
+
 	gateway := NewGateway("telegram", "", token)
 	result := gateway.Send(context.Background(), provider.Message{
 		EventID:   "live-test-" + time.Now().UTC().Format("20060102150405"),
@@ -90,4 +97,17 @@ func TestGatewaySendVerificationMessageLive(t *testing.T) {
 	if result.Status != provider.StatusSent {
 		t.Fatalf("result = %#v", result)
 	}
+}
+
+func randomCode(t *testing.T) string {
+	t.Helper()
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		t.Fatalf("generate code: %v", err)
+	}
+	n := int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
+	if n < 0 {
+		n = -n
+	}
+	return fmt.Sprintf("%06d", n%1000000)
 }
