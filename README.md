@@ -187,6 +187,21 @@ The tests cover:
 - config loading and env overrides.
 - isolated RabbitMQ consume/publish integration flow via `make docker-test`.
 
+## Live Provider Tests
+
+Live provider tests are disabled by default. They call real external APIs and may send real messages or spend provider balance.
+
+Telegram Gateway live test:
+
+```bash
+export TELEGRAM_GATEWAY_LIVE_TEST=1
+export TELEGRAM_GATEWAY_API_TOKEN=...
+export TELEGRAM_GATEWAY_TEST_PHONE=+15551234567
+go test ./internal/provider/telegram -run TestGatewaySendVerificationMessageLive -count=1
+```
+
+Use the phone number tied to the Telegram Gateway account when you want Telegram's free test delivery path. The number must be in E.164 format.
+
 ## Build
 
 Build Linux binaries:
