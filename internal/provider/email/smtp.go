@@ -3,14 +3,12 @@ package email
 import (
 	"context"
 	"crypto/tls"
-	"errors"
-	"net"
 	"net/smtp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/darkrain/message-delivery/internal/provider"
+	"gopkg.in/gomail.v2"
 )
 
 type SMTP struct {
@@ -53,83 +51,51 @@ func (p *SMTP) Send(ctx context.Context, msg provider.Message) provider.Result {
 	if p.host == "" || p.port <= 0 || p.from == "" {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_not_configured"}
 	}
-	addr := p.host + ":" + strconv.Itoa(p.port)
-	client, err := p.connect(ctx, addr)
-	if err != nil {
-		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_connect_failed"}
-	}
-	defer client.Close()
 
-	if p.username != "" || p.password != "" {
-		if err := client.Auth(smtp.PlainAuth("", p.username, p.password, p.authHost)); err != nil {
-			return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_auth_failed"}
-		}
-	}
-	payload := strings.Join([]string{
-		"From: " + p.from,
-		"To: " + msg.Recipient,
-		"Subject: " + msg.Subject,
-		"MIME-Version: 1.0",
-		"Content-Type: text/plain; charset=UTF-8",
-		"",
-		msg.Body,
-	}, "\r\n")
+	mail := gomail.NewMessage()
+	mail.SetHeader("From", p.from)
+	mail.SetHeader("To", msg.Recipient)
+	mail.SetHeader("Subject", msg.Subject)
+	mail.SetBody("text/plain; charset=UTF-8", msg.Body)
 
-	if err := client.Mail(p.from); err != nil {
-		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_mail_failed"}
+	dialer := gomail.NewDialer(p.host, p.port, p.username, p.password)
+	dialer.SSL = p.security == "tls" || (p.security == "" && p.port == 465)
+	dialer.TLSConfig = &tls.Config{ServerName: p.authHost, MinVersion: tls.VersionTLS12}
+	if p.authHost != "" && p.authHost != p.host && p.username != "" {
+		dialer.Auth = smtp.PlainAuth("", p.username, p.password, p.authHost)
 	}
-	if err := client.Rcpt(msg.Recipient); err != nil {
-		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_rcpt_failed"}
-	}
-	writer, err := client.Data()
-	if err != nil {
-		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_data_failed"}
-	}
-	if _, err := writer.Write([]byte(payload)); err != nil {
-		_ = writer.Close()
-		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_write_failed"}
-	}
-	if err := writer.Close(); err != nil {
-		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_send_failed"}
-	}
-	_ = client.Quit()
-	return provider.Result{Status: provider.StatusSent}
-}
 
-func (p *SMTP) connect(ctx context.Context, addr string) (*smtp.Client, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
-	dialer := &net.Dialer{Timeout: p.timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-	_ = conn.SetDeadline(time.Now().Add(p.timeout))
 
-	if p.security == "tls" || (p.security == "" && p.port == 465) {
-		tlsConn := tls.Client(conn, &tls.Config{ServerName: p.authHost, MinVersion: tls.VersionTLS12})
-		if err := tlsConn.HandshakeContext(ctx); err != nil {
-			_ = conn.Close()
-			return nil, err
-		}
-		return smtp.NewClient(tlsConn, p.authHost)
-	}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- dialer.DialAndSend(mail)
+	}()
 
-	client, err := smtp.NewClient(conn, p.authHost)
-	if err != nil {
-		_ = conn.Close()
-		return nil, err
-	}
-	if p.security == "starttls" || p.security == "" {
-		if ok, _ := client.Extension("STARTTLS"); ok {
-			if err := client.StartTLS(&tls.Config{ServerName: p.authHost, MinVersion: tls.VersionTLS12}); err != nil {
-				_ = client.Close()
-				return nil, err
-			}
-		} else if p.security == "starttls" {
-			_ = client.Close()
-			return nil, errors.New("smtp: starttls is not supported")
+	select {
+	case <-ctx.Done():
+		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_timeout"}
+	case err := <-errCh:
+		if err != nil {
+			return provider.Result{Status: provider.StatusFailed, ErrorCode: smtpErrorCode(err)}
 		}
+		return provider.Result{Status: provider.StatusSent}
 	}
-	return client, nil
+}
+
+func smtpErrorCode(err error) string {
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "authentication") || strings.Contains(message, "auth"):
+		return "smtp_auth_failed"
+	case strings.Contains(message, "recipient") || strings.Contains(message, "rcpt"):
+		return "smtp_rcpt_failed"
+	case strings.Contains(message, "timeout") || strings.Contains(message, "deadline"):
+		return "smtp_timeout"
+	case strings.Contains(message, "dial") || strings.Contains(message, "connect") || strings.Contains(message, "connection"):
+		return "smtp_connect_failed"
+	default:
+		return "smtp_send_failed"
+	}
 }

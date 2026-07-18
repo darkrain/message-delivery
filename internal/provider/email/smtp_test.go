@@ -2,6 +2,7 @@ package email
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strconv"
 	"testing"
@@ -35,6 +36,27 @@ func TestSMTPSendLive(t *testing.T) {
 	})
 	if result.Status != provider.StatusSent {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestSMTPErrorCode(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "auth", err: errors.New("535 authentication failed"), want: "smtp_auth_failed"},
+		{name: "recipient", err: errors.New("550 recipient rejected"), want: "smtp_rcpt_failed"},
+		{name: "timeout", err: errors.New("i/o timeout"), want: "smtp_timeout"},
+		{name: "connect", err: errors.New("dial tcp: connect: connection refused"), want: "smtp_connect_failed"},
+		{name: "fallback", err: errors.New("unexpected smtp error"), want: "smtp_send_failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := smtpErrorCode(tt.err); got != tt.want {
+				t.Fatalf("smtpErrorCode() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
