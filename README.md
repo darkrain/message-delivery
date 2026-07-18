@@ -160,6 +160,31 @@ Supported adapter kinds:
 
 WhatsApp and Twilio/SMS adapters are intentionally registered as explicit `not_configured` placeholders until provider credentials and exact contracts are selected.
 
+## Template Behavior
+
+Templates are a common input contract for producers, but not every provider can send arbitrary rendered text.
+
+| Adapter kind | Uses rendered `subject` | Uses rendered `body` | Uses structured variables |
+|---|---:|---:|---:|
+| `smtp` | yes | yes | no |
+| `fake` | yes | yes | no |
+| `telegram-gateway` | no | no | yes |
+
+For `smtp` and future text-based providers, the service renders the configured template using `variables` and sends the rendered body.
+
+For `telegram-gateway`, Telegram controls the verification message text. The adapter does not send our rendered `subject` or `body`. It uses the template only as a logical key and validation boundary, then maps structured event fields to Telegram Gateway:
+
+| Event field | Telegram Gateway field |
+|---|---|
+| `recipient` | `phone_number` |
+| `variables.code` | `code` |
+| `variables.ttl_sec` | `ttl` |
+| `event_id` | `payload` |
+| `metadata.telegram_sender_username` | `sender_username` |
+| `metadata.telegram_callback_url` | `callback_url` |
+
+That means producers should still publish `template=auth_verification_code`, but they must not expect Telegram Gateway to display the configured template text. The code shown to the user is the value from `variables.code`, or a Telegram-generated code if a future adapter mode omits `code`.
+
 ## Configuration
 
 Copy and edit the example config:
