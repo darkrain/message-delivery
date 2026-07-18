@@ -309,6 +309,61 @@ bin/message-delivery-send \
   --code 123456
 ```
 
+This default example does not send a real Telegram message. It is a local smoke test for RabbitMQ wiring and orchestration.
+
+### Send a Real Telegram Gateway Code
+
+Use `message-delivery.telegram.example.json` when you want real Telegram Gateway delivery through the full service path.
+
+Start RabbitMQ:
+
+```bash
+docker compose -f docker-compose.integration.yml up -d rabbitmq
+```
+
+Start `message-delivery` with the Telegram Gateway config:
+
+```bash
+export RABBITMQ_PASSWORD=guest
+export MESSAGE_DELIVERY_BROKER_HOST=127.0.0.1:5674
+export TELEGRAM_GATEWAY_API_TOKEN=...
+
+go run ./cmd/main.go --config message-delivery.telegram.example.json
+```
+
+In another terminal, publish a real Telegram request through the manual client:
+
+```bash
+export RABBITMQ_PASSWORD=guest
+export MESSAGE_DELIVERY_BROKER_HOST=127.0.0.1:5674
+
+go run ./cmd/send-test-message \
+  --config message-delivery.telegram.example.json \
+  --recipient-type phone \
+  --recipient +15551234567 \
+  --event-id manual-telegram-live-1 \
+  --code 123456 \
+  --provider telegram \
+  --allow-fallback=false \
+  --wait-result=true \
+  --timeout=20s
+```
+
+Expected result:
+
+```json
+{
+  "type": "message.delivery.result",
+  "request_event_id": "manual-telegram-live-1",
+  "status": "sent",
+  "recipient_type": "phone",
+  "provider": "telegram",
+  "attempt": 1
+}
+```
+
+If the result is `sent`, Telegram Gateway accepted the send request. Delivery to the phone still depends on Telegram Gateway rules, account binding and provider limits.
+
 ### Publish an Email Message
 
 Use the manual client:

@@ -24,6 +24,22 @@ func TestLoadExampleConfig(t *testing.T) {
 	}
 }
 
+func TestLoadTelegramExampleConfig(t *testing.T) {
+	cfg, err := Load("../../message-delivery.telegram.example.json")
+	if err != nil {
+		t.Fatalf("Load telegram example config: %v", err)
+	}
+	if got := cfg.DefaultProviderChain("phone"); len(got) != 1 || got[0] != "telegram" {
+		t.Errorf("phone chain = %#v, want telegram only", got)
+	}
+	if !cfg.AllowedProvider("phone", "telegram") {
+		t.Error("telegram should be allowed for phone")
+	}
+	if cfg.AllowedProvider("phone", "sms") {
+		t.Error("sms should not be allowed in telegram example config")
+	}
+}
+
 func TestLoadEnvOverridesBroker(t *testing.T) {
 	t.Setenv("MESSAGE_DELIVERY_BROKER_HOST", "rabbitmq:5672")
 	t.Setenv("MESSAGE_DELIVERY_BROKER_PASSWORD", "secret")

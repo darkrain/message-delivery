@@ -1,0 +1,71 @@
+{
+  "Host": "",
+  "Port": "8090",
+  "Broker": {
+    "Host": "127.0.0.1:5673",
+    "User": "guest",
+    "Password": "",
+    "PasswordEnv": "RABBITMQ_PASSWORD",
+    "ExchangeName": "messages.events",
+    "ExchangeKind": "topic",
+    "ConsumeQueue": "message.delivery.requests",
+    "PrefetchCount": 8,
+    "RoutingKeys": {
+      "DeliveryRequested": "message.delivery.requested",
+      "DeliveryResult": "message.delivery.result"
+    }
+  },
+  "Providers": {
+    "Email": {
+      "Enabled": true,
+      "DefaultProvider": "fake-email",
+      "AllowedProviders": ["fake-email"],
+      "Adapters": {
+        "fake-email": {
+          "Enabled": true,
+          "Kind": "fake",
+          "Status": "sent"
+        }
+      }
+    },
+    "Phone": {
+      "DefaultProviderChain": ["telegram"],
+      "AllowedProviders": ["telegram"],
+      "Adapters": {
+        "telegram": {
+          "Enabled": true,
+          "Kind": "telegram-gateway",
+          "BaseURL": "https://gatewayapi.telegram.org",
+          "ApiTokenEnv": "TELEGRAM_GATEWAY_API_TOKEN"
+        }
+      }
+    }
+  },
+  "Templates": {
+    "DefaultLocale": "en",
+    "Items": {
+      "auth_verification_code": {
+        "Subject": {
+          "en": "Verification code",
+          "ru": "Код подтверждения"
+        },
+        "Body": {
+          "en": "Your code is {{code}}. It expires in {{ttl_sec}} seconds.",
+          "ru": "Ваш код: {{code}}. Он действует {{ttl_sec}} секунд."
+        },
+        "RequiredVariables": ["code", "ttl_sec"]
+      },
+      "auth_password_reset": {
+        "Subject": {
+          "en": "Password reset code",
+          "ru": "Код сброса пароля"
+        },
+        "Body": {
+          "en": "Your password reset code is {{code}}. It expires in {{ttl_sec}} seconds.",
+          "ru": "Ваш код сброса пароля: {{code}}. Он действует {{ttl_sec}} секунд."
+        },
+        "RequiredVariables": ["code", "ttl_sec"]
+      }
+    }
+  }
+}
