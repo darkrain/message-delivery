@@ -1,6 +1,8 @@
 package factory
 
 import (
+	"time"
+
 	"github.com/darkrain/message-delivery/internal/config"
 	"github.com/darkrain/message-delivery/internal/provider"
 	"github.com/darkrain/message-delivery/internal/provider/email"
@@ -40,16 +42,23 @@ func buildProvider(name string, adapter config.AdapterConfig, recipientType stri
 		}
 		return fake.New(name, status)
 	case "smtp":
+		from := adapter.String("From")
+		if from == "" {
+			from = adapter.EnvString("FromEnv")
+		}
 		return email.NewSMTP(
 			name,
 			adapter.String("Host"),
 			adapter.Int("Port"),
+			adapter.String("AuthHost"),
 			adapter.EnvString("UsernameEnv"),
 			adapter.EnvString("PasswordEnv"),
-			adapter.String("From"),
+			from,
+			adapter.String("Security"),
+			timeout(adapter, 15*time.Second),
 		)
 	case "telegram-gateway":
-		return telegram.NewGateway(name, adapter.String("BaseURL"), adapter.EnvString("ApiTokenEnv"))
+		return telegram.NewGateway(name, adapter.String("BaseURL"), adapter.EnvString("ApiTokenEnv"), timeout(adapter, 10*time.Second))
 	case "":
 		if recipientType == deliveryRecipientPhone {
 			return provider.NewUnavailable(name, name+"_not_configured")
@@ -58,4 +67,12 @@ func buildProvider(name string, adapter config.AdapterConfig, recipientType stri
 	default:
 		return provider.NewUnavailable(name, "provider_kind_unsupported")
 	}
+}
+
+func timeout(adapter config.AdapterConfig, fallback time.Duration) time.Duration {
+	seconds := adapter.Int("TimeoutSec")
+	if seconds <= 0 {
+		return fallback
+	}
+	return time.Duration(seconds) * time.Second
 }

@@ -63,3 +63,34 @@ func TestNewRegistryFromConfigDisabledProviderIsUnavailable(t *testing.T) {
 		t.Fatalf("whatsapp result = %#v", result)
 	}
 }
+
+func TestNewRegistryFromConfigBuildsSMTPFromEnv(t *testing.T) {
+	t.Setenv("SMTP_USERNAME", "user@example.com")
+	t.Setenv("SMTP_PASSWORD", "secret")
+	t.Setenv("SMTP_FROM", "user@example.com")
+	cfg := &config.Config{
+		Providers: config.ProvidersConfig{
+			Email: config.ChannelConfig{
+				Adapters: map[string]config.AdapterConfig{
+					"smtp": {
+						"Enabled":     true,
+						"Kind":        "smtp",
+						"Host":        "smtp.example.com",
+						"Port":        587,
+						"Security":    "starttls",
+						"AuthHost":    "smtp.example.com",
+						"TimeoutSec":  5,
+						"UsernameEnv": "SMTP_USERNAME",
+						"PasswordEnv": "SMTP_PASSWORD",
+						"FromEnv":     "SMTP_FROM",
+					},
+				},
+			},
+		},
+	}
+
+	registry := NewRegistryFromConfig(cfg)
+	if _, ok := registry.Get("smtp"); !ok {
+		t.Fatal("smtp provider missing")
+	}
+}

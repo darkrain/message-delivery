@@ -31,6 +31,9 @@
           "Kind": "smtp",
           "Host": "smtp.example.com",
           "Port": 587,
+          "Security": "starttls",
+          "AuthHost": "smtp.example.com",
+          "TimeoutSec": 15,
           "UsernameEnv": "SMTP_USERNAME",
           "PasswordEnv": "SMTP_PASSWORD",
           "From": "no-reply@example.com"
@@ -46,6 +49,7 @@
           "Kind": "fake",
           "Status": "undeliverable",
           "BaseURL": "https://gatewayapi.telegram.org",
+          "TimeoutSec": 10,
           "ApiTokenEnv": "TELEGRAM_GATEWAY_API_TOKEN"
         },
         "whatsapp": {

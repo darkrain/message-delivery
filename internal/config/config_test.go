@@ -40,6 +40,35 @@ func TestLoadTelegramExampleConfig(t *testing.T) {
 	}
 }
 
+func TestLoadSMTPExampleConfig(t *testing.T) {
+	cfg, err := Load("../../message-delivery.smtp.example.json")
+	if err != nil {
+		t.Fatalf("Load smtp example config: %v", err)
+	}
+	if cfg.Providers.Email.DefaultProvider != "smtp" {
+		t.Errorf("email default provider = %q, want smtp", cfg.Providers.Email.DefaultProvider)
+	}
+	if !cfg.AllowedProvider("email", "smtp") {
+		t.Error("smtp should be allowed for email")
+	}
+	if cfg.AllowedProvider("email", "fake-email") {
+		t.Error("fake-email should not be allowed in smtp example config")
+	}
+	adapter := cfg.Providers.Email.Adapters["smtp"]
+	if adapter.String("Host") != "smtp.yandex.com" {
+		t.Errorf("smtp host = %q, want smtp.yandex.com", adapter.String("Host"))
+	}
+	if adapter.String("Security") != "tls" {
+		t.Errorf("smtp security = %q, want tls", adapter.String("Security"))
+	}
+	if adapter.String("AuthHost") != "smtp.yandex.com" {
+		t.Errorf("smtp auth host = %q, want smtp.yandex.com", adapter.String("AuthHost"))
+	}
+	if adapter.Int("TimeoutSec") <= 0 {
+		t.Error("smtp timeout must be configured")
+	}
+}
+
 func TestLoadEnvOverridesBroker(t *testing.T) {
 	t.Setenv("MESSAGE_DELIVERY_BROKER_HOST", "rabbitmq:5672")
 	t.Setenv("MESSAGE_DELIVERY_BROKER_PASSWORD", "secret")

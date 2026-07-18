@@ -21,16 +21,19 @@ type Gateway struct {
 	httpClient *http.Client
 }
 
-func NewGateway(name, baseURL, apiToken string) *Gateway {
+func NewGateway(name, baseURL, apiToken string, timeout time.Duration) *Gateway {
 	if baseURL == "" {
 		baseURL = defaultBaseURL
+	}
+	if timeout <= 0 {
+		timeout = 10 * time.Second
 	}
 	return &Gateway{
 		name:     name,
 		baseURL:  baseURL,
 		apiToken: apiToken,
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: timeout,
 		},
 	}
 }

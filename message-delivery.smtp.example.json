@@ -18,26 +18,31 @@
   "Providers": {
     "Email": {
       "Enabled": true,
-      "DefaultProvider": "fake-email",
-      "AllowedProviders": ["fake-email"],
+      "DefaultProvider": "smtp",
+      "AllowedProviders": ["smtp"],
       "Adapters": {
-        "fake-email": {
+        "smtp": {
           "Enabled": true,
-          "Kind": "fake",
-          "Status": "sent"
+          "Kind": "smtp",
+          "Host": "smtp.yandex.com",
+          "Port": 465,
+          "Security": "tls",
+          "AuthHost": "smtp.yandex.com",
+          "TimeoutSec": 20,
+          "UsernameEnv": "SMTP_USERNAME",
+          "PasswordEnv": "SMTP_PASSWORD",
+          "FromEnv": "SMTP_FROM"
         }
       }
     },
     "Phone": {
-      "DefaultProviderChain": ["telegram"],
-      "AllowedProviders": ["telegram"],
+      "DefaultProviderChain": ["sms"],
+      "AllowedProviders": ["sms"],
       "Adapters": {
-        "telegram": {
+        "sms": {
           "Enabled": true,
-          "Kind": "telegram-gateway",
-          "BaseURL": "https://gatewayapi.telegram.org",
-          "TimeoutSec": 10,
-          "ApiTokenEnv": "TELEGRAM_GATEWAY_API_TOKEN"
+          "Kind": "fake",
+          "Status": "sent"
         }
       }
     }

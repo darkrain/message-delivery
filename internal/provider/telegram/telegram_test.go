@@ -29,7 +29,7 @@ func TestGatewaySendVerificationMessage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	gateway := NewGateway("telegram", server.URL, "token-1")
+	gateway := NewGateway("telegram", server.URL, "token-1", time.Second)
 	result := gateway.Send(context.Background(), provider.Message{
 		EventID:   "event-1",
 		Recipient: "+10000000000",
@@ -54,7 +54,7 @@ func TestGatewaySendVerificationMessage(t *testing.T) {
 }
 
 func TestGatewayMissingTokenAllowsFallback(t *testing.T) {
-	gateway := NewGateway("telegram", "", "")
+	gateway := NewGateway("telegram", "", "", time.Second)
 	result := gateway.Send(context.Background(), provider.Message{
 		Recipient: "+10000000000",
 		Variables: map[string]string{"code": "123456"},
@@ -84,7 +84,7 @@ func TestGatewaySendVerificationMessageLive(t *testing.T) {
 	}
 	t.Logf("sending Telegram Gateway verification code %s to %s", code, phone)
 
-	gateway := NewGateway("telegram", "", token)
+	gateway := NewGateway("telegram", "", token, 10*time.Second)
 	result := gateway.Send(context.Background(), provider.Message{
 		EventID:   "live-test-" + time.Now().UTC().Format("20060102150405"),
 		Recipient: phone,

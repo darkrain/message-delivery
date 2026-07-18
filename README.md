@@ -207,6 +207,9 @@ Useful environment overrides:
 | `MESSAGE_DELIVERY_BROKER_PREFETCH` | Consumer prefetch count |
 | `RABBITMQ_PASSWORD` | Password used when `Broker.PasswordEnv` points to it |
 | `TELEGRAM_GATEWAY_API_TOKEN` | Telegram Gateway adapter token |
+| `SMTP_USERNAME` | SMTP account username for the `smtp` email adapter |
+| `SMTP_PASSWORD` | SMTP account password or app password for the `smtp` email adapter |
+| `SMTP_FROM` | SMTP sender address |
 
 For local tests, `message-delivery.example.json` uses fake phone providers. To send through Telegram Gateway, switch the `telegram` adapter:
 
@@ -220,6 +223,33 @@ For local tests, `message-delivery.example.json` uses fake phone providers. To s
 ```
 
 The token must be exported in the runtime environment, not committed to the config file.
+
+For real SMTP delivery, use `message-delivery.smtp.example.json` or configure an adapter with:
+
+```json
+{
+  "Enabled": true,
+  "Kind": "smtp",
+  "Host": "smtp.yandex.com",
+  "Port": 465,
+  "Security": "tls",
+  "AuthHost": "smtp.yandex.com",
+  "TimeoutSec": 20,
+  "UsernameEnv": "SMTP_USERNAME",
+  "PasswordEnv": "SMTP_PASSWORD",
+  "FromEnv": "SMTP_FROM"
+}
+```
+
+`Security` supports:
+
+| Value | Behavior |
+|---|---|
+| `tls` | Open an implicit TLS SMTP connection, normally port `465`. |
+| `starttls` | Open a plain SMTP connection and upgrade through STARTTLS, normally port `587`. |
+| empty | Use implicit TLS on port `465`; otherwise use STARTTLS when the server advertises it. |
+
+For Yandex Mail, the documented SMTP settings are `smtp.yandex.com`, SSL/TLS and port `465`. Port `587` can be used only when the client starts without encryption and upgrades with STARTTLS. Use an app password, not the account's primary password.
 
 ## Usage
 
@@ -434,6 +464,67 @@ Example request for email delivery:
 
 For email, the service uses `Providers.Email.DefaultProvider` unless `delivery.selected_provider` is set.
 
+### Send a Real SMTP Email
+
+Use `message-delivery.smtp.example.json` when you want to send email through a real SMTP server.
+
+Create a local `.env` file or export the variables in your shell. `.env` is ignored by git.
+
+```bash
+export SMTP_USERNAME=sender@example.com
+export SMTP_PASSWORD=app-password
+export SMTP_FROM=sender@example.com
+export SMTP_TO=user@example.com
+```
+
+Start RabbitMQ:
+
+```bash
+docker compose -f docker-compose.integration.yml up -d rabbitmq
+```
+
+Start `message-delivery`:
+
+```bash
+export RABBITMQ_PASSWORD=guest
+export MESSAGE_DELIVERY_BROKER_HOST=127.0.0.1:5674
+
+go run ./cmd/main.go --config message-delivery.smtp.example.json
+```
+
+In another terminal, send a password reset message through the manual client:
+
+```bash
+export RABBITMQ_PASSWORD=guest
+export MESSAGE_DELIVERY_BROKER_HOST=127.0.0.1:5674
+
+go run ./cmd/send-test-message \
+  --config message-delivery.smtp.example.json \
+  --recipient-type email \
+  --recipient "$SMTP_TO" \
+  --event-id manual-email-live-1 \
+  --template auth_password_reset \
+  --purpose password_reset \
+  --code 112233 \
+  --wait-result=true \
+  --timeout=60s
+```
+
+Expected result:
+
+```json
+{
+  "type": "message.delivery.result",
+  "request_event_id": "manual-email-live-1",
+  "status": "sent",
+  "recipient_type": "email",
+  "provider": "smtp",
+  "attempt": 1
+}
+```
+
+If the result is `smtp_connect_failed`, check outbound TCP access from the host/container to the configured SMTP host and port before debugging credentials. Many server networks block SMTP egress to `465`/`587` by policy.
+
 ### Manual Client Flags
 
 | Flag | Description |
@@ -613,6 +704,24 @@ go test ./internal/provider/telegram -run TestGatewaySendVerificationMessageLive
 
 Use the phone number tied to the Telegram Gateway account when you want Telegram's free test delivery path. The number must be in E.164 format.
 Run with `-v` to see the exact code sent by the test.
+
+SMTP live test:
+
+```bash
+export SMTP_LIVE_TEST=1
+export SMTP_HOST=smtp.yandex.com
+export SMTP_PORT=465
+export SMTP_SECURITY=tls
+export SMTP_AUTH_HOST=smtp.yandex.com
+export SMTP_USERNAME=sender@example.com
+export SMTP_PASSWORD=app-password
+export SMTP_FROM=sender@example.com
+export SMTP_TO=user@example.com
+
+go test ./internal/provider/email -run TestSMTPSendLive -count=1 -v
+```
+
+The SMTP live test sends a real email. It is skipped unless `SMTP_LIVE_TEST=1` is set.
 
 ## Build
 
