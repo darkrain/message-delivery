@@ -121,10 +121,61 @@ func (b *Broker) Consume() (<-chan amqp.Delivery, func() error, error) {
 	return deliveries, ch.Close, nil
 }
 
+func (b *Broker) ConsumeResultsTemporary() (<-chan amqp.Delivery, func() error, error) {
+	ch, err := b.conn.Channel()
+	if err != nil {
+		return nil, nil, fmt.Errorf("broker: open temporary result channel: %w", err)
+	}
+	queue, err := ch.QueueDeclare(
+		"",
+		false,
+		true,
+		true,
+		false,
+		nil,
+	)
+	if err != nil {
+		_ = ch.Close()
+		return nil, nil, fmt.Errorf("broker: declare temporary result queue: %w", err)
+	}
+	if err := ch.QueueBind(
+		queue.Name,
+		b.cfg.RoutingKeys.DeliveryResult,
+		b.cfg.ExchangeName,
+		false,
+		nil,
+	); err != nil {
+		_ = ch.Close()
+		return nil, nil, fmt.Errorf("broker: bind temporary result queue: %w", err)
+	}
+	deliveries, err := ch.Consume(
+		queue.Name,
+		"",
+		true,
+		true,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		_ = ch.Close()
+		return nil, nil, fmt.Errorf("broker: consume temporary result queue: %w", err)
+	}
+	return deliveries, ch.Close, nil
+}
+
+func (b *Broker) PublishRequest(ctx context.Context, event delivery.RequestEvent) error {
+	return b.publish(ctx, b.cfg.RoutingKeys.DeliveryRequested, event)
+}
+
 func (b *Broker) PublishResult(ctx context.Context, event delivery.ResultEvent) error {
+	return b.publish(ctx, b.cfg.RoutingKeys.DeliveryResult, event)
+}
+
+func (b *Broker) publish(ctx context.Context, routingKey string, event any) error {
 	payload, err := json.Marshal(event)
 	if err != nil {
-		return fmt.Errorf("broker: marshal result: %w", err)
+		return fmt.Errorf("broker: marshal event: %w", err)
 	}
 	ch, err := b.conn.Channel()
 	if err != nil {
@@ -133,7 +184,7 @@ func (b *Broker) PublishResult(ctx context.Context, event delivery.ResultEvent) 
 	defer ch.Close()
 	return ch.PublishWithContext(ctx,
 		b.cfg.ExchangeName,
-		b.cfg.RoutingKeys.DeliveryResult,
+		routingKey,
 		false,
 		false,
 		amqp.Publishing{

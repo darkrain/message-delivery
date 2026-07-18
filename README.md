@@ -234,6 +234,24 @@ Default credentials in the integration compose are `guest` / `guest`.
 
 ### Publish a Phone Verification Code
 
+Use the manual client instead of RabbitMQ UI:
+
+```bash
+go run ./cmd/send-test-message \
+  --config message-delivery.example.json \
+  --recipient-type phone \
+  --recipient +15551234567 \
+  --template auth_verification_code \
+  --purpose registration_verification \
+  --code 123456 \
+  --ttl-sec 300 \
+  --provider-chain telegram,whatsapp,sms \
+  --allow-fallback=true \
+  --wait-result=true
+```
+
+The command publishes `message.delivery.requested`, waits for the matching `message.delivery.result`, and prints the result JSON.
+
 Example request for phone verification:
 
 ```json
@@ -281,7 +299,30 @@ rabbitmqadmin \
 
 With the default example config this uses fake providers: Telegram and WhatsApp return `undeliverable`, then SMS returns `sent`.
 
+After `make build`, the same command is available as:
+
+```bash
+bin/message-delivery-send \
+  --config message-delivery.example.json \
+  --recipient-type phone \
+  --recipient +15551234567 \
+  --code 123456
+```
+
 ### Publish an Email Message
+
+Use the manual client:
+
+```bash
+go run ./cmd/send-test-message \
+  --config message-delivery.example.json \
+  --recipient-type email \
+  --recipient user@example.com \
+  --template auth_password_reset \
+  --purpose password_reset \
+  --code 654321 \
+  --wait-result=true
+```
 
 Example request for email delivery:
 
@@ -313,9 +354,33 @@ Example request for email delivery:
 
 For email, the service uses `Providers.Email.DefaultProvider` unless `delivery.selected_provider` is set.
 
+### Manual Client Flags
+
+| Flag | Description |
+|---|---|
+| `--config` | Path to service config JSON. Defaults to `message-delivery.example.json`. |
+| `--recipient-type` | `phone` or `email`. |
+| `--recipient` | Phone in E.164 format or email address. Required. |
+| `--template` | Template key from config, for example `auth_verification_code`. |
+| `--purpose` | Producer-defined delivery purpose. |
+| `--source` | Producer name. Defaults to `manual-client`. |
+| `--event-id` | Optional idempotency key. Generated when empty. |
+| `--code` | Sets `variables.code`. |
+| `--ttl-sec` | Sets `variables.ttl_sec`. |
+| `--variables` | Additional variables as JSON object, for example `{\"name\":\"Anna\"}`. |
+| `--metadata` | Additional metadata as JSON object, for example `{\"device_uid\":\"dev-1\"}`. |
+| `--locale` | Sets `metadata.locale`. |
+| `--provider` | Selected provider, for example `telegram`. |
+| `--provider-chain` | Comma-separated chain, for example `telegram,whatsapp,sms`. |
+| `--allow-fallback` | Whether to continue after `undeliverable`. |
+| `--wait-result` | Wait for matching result event and print it. Defaults to `true`. |
+| `--timeout` | Publish/result timeout. Defaults to `15s`. |
+
 ### Read Delivery Results
 
-Create a temporary result queue and bind it to the result routing key:
+The manual client creates a temporary result queue automatically when `--wait-result=true`.
+
+If you need to inspect results manually, create a temporary result queue and bind it to the result routing key:
 
 ```bash
 rabbitmqadmin \

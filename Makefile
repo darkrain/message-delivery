@@ -2,6 +2,7 @@ SHELL := /bin/bash
 
 BIN_DIR  := bin
 BIN_FILE := message-delivery
+CLIENT_FILE := message-delivery-send
 PKG      := github.com/darkrain/message-delivery
 
 VERSION  := $(or $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//'),dev)
@@ -20,6 +21,8 @@ vendor:
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(BIN_FILE) ./cmd/main.go
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BIN_DIR)/$(BIN_FILE)-arm64 ./cmd/main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(CLIENT_FILE) ./cmd/send-test-message
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BIN_DIR)/$(CLIENT_FILE)-arm64 ./cmd/send-test-message
 
 test:
 	go test ./...
@@ -29,6 +32,7 @@ run:
 
 install: build
 	install -D -m 0755 $(BIN_DIR)/$(BIN_FILE) /usr/bin/$(BIN_FILE)
+	install -D -m 0755 $(BIN_DIR)/$(CLIENT_FILE) /usr/bin/$(CLIENT_FILE)
 	install -D -m 0644 message-delivery.service /etc/systemd/system/message-delivery.service
 	install -d /etc/message-delivery
 	@if [ ! -f /etc/message-delivery/config.json ]; then \
@@ -41,6 +45,7 @@ uninstall:
 	systemctl stop message-delivery 2>/dev/null || true
 	systemctl disable message-delivery 2>/dev/null || true
 	rm -f /usr/bin/$(BIN_FILE)
+	rm -f /usr/bin/$(CLIENT_FILE)
 	rm -f /etc/systemd/system/message-delivery.service
 	systemctl daemon-reload
 
@@ -55,6 +60,7 @@ deb: build
 	mkdir -p /tmp/$(DEB_AMD64)/etc/systemd/system
 	mkdir -p /tmp/$(DEB_AMD64)/etc/message-delivery
 	install -m 0755 $(BIN_DIR)/$(BIN_FILE) /tmp/$(DEB_AMD64)/usr/bin/$(BIN_FILE)
+	install -m 0755 $(BIN_DIR)/$(CLIENT_FILE) /tmp/$(DEB_AMD64)/usr/bin/$(CLIENT_FILE)
 	install -m 0644 message-delivery.service /tmp/$(DEB_AMD64)/etc/systemd/system/message-delivery.service
 	install -m 0600 message-delivery.example.json /tmp/$(DEB_AMD64)/etc/message-delivery/config.json
 	printf 'Package: $(BIN_FILE)\nVersion: $(VERSION)\nArchitecture: amd64\nMaintainer: darkrain\nDescription: message-delivery\n' \
@@ -69,6 +75,7 @@ deb: build
 	mkdir -p /tmp/$(DEB_ARM64)/etc/systemd/system
 	mkdir -p /tmp/$(DEB_ARM64)/etc/message-delivery
 	install -m 0755 $(BIN_DIR)/$(BIN_FILE)-arm64 /tmp/$(DEB_ARM64)/usr/bin/$(BIN_FILE)
+	install -m 0755 $(BIN_DIR)/$(CLIENT_FILE)-arm64 /tmp/$(DEB_ARM64)/usr/bin/$(CLIENT_FILE)
 	install -m 0644 message-delivery.service /tmp/$(DEB_ARM64)/etc/systemd/system/message-delivery.service
 	install -m 0600 message-delivery.example.json /tmp/$(DEB_ARM64)/etc/message-delivery/config.json
 	printf 'Package: $(BIN_FILE)\nVersion: $(VERSION)\nArchitecture: arm64\nMaintainer: darkrain\nDescription: message-delivery\n' \
