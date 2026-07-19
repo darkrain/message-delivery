@@ -76,15 +76,20 @@
   },
   "Templates": {
     "DefaultLocale": "en",
+    "BaseDir": "templates",
     "Items": {
       "auth_verification_code": {
         "Subject": {
           "en": "Verification code",
           "ru": "Код подтверждения"
         },
-        "Body": {
+        "TextBody": {
           "en": "Your code is {{code}}. It expires in {{ttl_sec}} seconds.",
           "ru": "Ваш код: {{code}}. Он действует {{ttl_sec}} секунд."
+        },
+        "HtmlBodyFile": {
+          "en": "email/auth_verification_code.en.html",
+          "ru": "email/auth_verification_code.ru.html"
         },
         "RequiredVariables": ["code", "ttl_sec"]
       },
@@ -93,9 +98,13 @@
           "en": "Password reset code",
           "ru": "Код сброса пароля"
         },
-        "Body": {
+        "TextBody": {
           "en": "Your password reset code is {{code}}. It expires in {{ttl_sec}} seconds.",
           "ru": "Ваш код сброса пароля: {{code}}. Он действует {{ttl_sec}} секунд."
+        },
+        "HtmlBodyFile": {
+          "en": "email/auth_password_reset.en.html",
+          "ru": "email/auth_password_reset.ru.html"
         },
         "RequiredVariables": ["code", "ttl_sec"]
       }

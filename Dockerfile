@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 COPY --from=builder /bin/message-delivery /usr/bin/message-delivery
 COPY message-delivery.example.json /etc/message-delivery/config.json
+COPY templates /etc/message-delivery/templates
 EXPOSE 8090
 ENTRYPOINT ["/usr/bin/message-delivery"]
 CMD ["--config", "/etc/message-delivery/config.json"]

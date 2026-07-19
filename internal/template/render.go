@@ -2,6 +2,8 @@ package template
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/darkrain/message-delivery/internal/config"
@@ -12,8 +14,9 @@ type Renderer struct {
 }
 
 type Rendered struct {
-	Subject string
-	Body    string
+	Subject     string
+	Body        string
+	ContentType string
 }
 
 func NewRenderer(cfg config.TemplatesConfig) *Renderer {
@@ -34,14 +37,63 @@ func (r *Renderer) Render(templateKey string, locale string, variables map[strin
 		locale = r.cfg.DefaultLocale
 	}
 	subject := localized(item.Subject, locale, r.cfg.DefaultLocale)
-	body := localized(item.Body, locale, r.cfg.DefaultLocale)
+	body, contentType, err := r.body(item, locale)
+	if err != nil {
+		return Rendered{}, err
+	}
 	if body == "" {
 		return Rendered{}, fmt.Errorf("template: %s body is empty", templateKey)
 	}
 	return Rendered{
-		Subject: replaceVariables(subject, variables),
-		Body:    replaceVariables(body, variables),
+		Subject:     replaceVariables(subject, variables),
+		Body:        replaceVariables(body, variables),
+		ContentType: contentType,
 	}, nil
+}
+
+func (r *Renderer) body(item config.TemplateConfig, locale string) (string, string, error) {
+	contentType := item.ContentType
+	if contentType == "" {
+		contentType = "text/plain; charset=UTF-8"
+	}
+	if body := localized(item.HtmlBody, locale, r.cfg.DefaultLocale); body != "" {
+		if item.ContentType == "" {
+			contentType = "text/html; charset=UTF-8"
+		}
+		return body, contentType, nil
+	}
+	if path := localized(item.HtmlBodyFile, locale, r.cfg.DefaultLocale); path != "" {
+		body, err := r.readTemplateFile(path)
+		if err != nil {
+			return "", "", err
+		}
+		if item.ContentType == "" {
+			contentType = "text/html; charset=UTF-8"
+		}
+		return body, contentType, nil
+	}
+	if body := localized(item.TextBody, locale, r.cfg.DefaultLocale); body != "" {
+		return body, contentType, nil
+	}
+	if path := localized(item.TextBodyFile, locale, r.cfg.DefaultLocale); path != "" {
+		body, err := r.readTemplateFile(path)
+		if err != nil {
+			return "", "", err
+		}
+		return body, contentType, nil
+	}
+	return localized(item.Body, locale, r.cfg.DefaultLocale), contentType, nil
+}
+
+func (r *Renderer) readTemplateFile(path string) (string, error) {
+	if !filepath.IsAbs(path) && r.cfg.BaseDir != "" {
+		path = filepath.Join(r.cfg.BaseDir, path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("template: read file %q: %w", path, err)
+	}
+	return string(data), nil
 }
 
 func localized(values map[string]string, locale string, fallback string) string {

@@ -98,6 +98,7 @@ func (o *Orchestrator) Handle(ctx context.Context, event *RequestEvent) (ResultE
 			Template:      event.Template,
 			Subject:       rendered.Subject,
 			Body:          rendered.Body,
+			ContentType:   rendered.ContentType,
 			RecipientType: event.RecipientType,
 			Recipient:     event.Recipient,
 			Variables:     event.Variables,

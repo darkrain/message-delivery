@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -12,6 +13,9 @@ func TestLoadExampleConfig(t *testing.T) {
 	}
 	if cfg.Broker.ExchangeName != "messages.events" {
 		t.Errorf("ExchangeName = %q", cfg.Broker.ExchangeName)
+	}
+	if !strings.HasSuffix(cfg.Templates.BaseDir, "templates") {
+		t.Errorf("Templates.BaseDir = %q, want templates suffix", cfg.Templates.BaseDir)
 	}
 	if got := cfg.DefaultProviderChain("phone"); len(got) != 3 {
 		t.Errorf("phone chain len = %d, want 3", len(got))

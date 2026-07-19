@@ -35,6 +35,7 @@ install: build
 	install -D -m 0755 $(BIN_DIR)/$(CLIENT_FILE) /usr/bin/$(CLIENT_FILE)
 	install -D -m 0644 message-delivery.service /etc/systemd/system/message-delivery.service
 	install -d /etc/message-delivery
+	cp -R templates /etc/message-delivery/
 	@if [ ! -f /etc/message-delivery/config.json ]; then \
 		install -D -m 0600 message-delivery.example.json /etc/message-delivery/config.json; \
 		echo "Installed default config to /etc/message-delivery/config.json — please edit it!"; \
@@ -59,6 +60,7 @@ deb: build
 	mkdir -p /tmp/$(DEB_AMD64)/usr/bin
 	mkdir -p /tmp/$(DEB_AMD64)/etc/systemd/system
 	mkdir -p /tmp/$(DEB_AMD64)/etc/message-delivery
+	cp -R templates /tmp/$(DEB_AMD64)/etc/message-delivery/
 	install -m 0755 $(BIN_DIR)/$(BIN_FILE) /tmp/$(DEB_AMD64)/usr/bin/$(BIN_FILE)
 	install -m 0755 $(BIN_DIR)/$(CLIENT_FILE) /tmp/$(DEB_AMD64)/usr/bin/$(CLIENT_FILE)
 	install -m 0644 message-delivery.service /tmp/$(DEB_AMD64)/etc/systemd/system/message-delivery.service
@@ -74,6 +76,7 @@ deb: build
 	mkdir -p /tmp/$(DEB_ARM64)/usr/bin
 	mkdir -p /tmp/$(DEB_ARM64)/etc/systemd/system
 	mkdir -p /tmp/$(DEB_ARM64)/etc/message-delivery
+	cp -R templates /tmp/$(DEB_ARM64)/etc/message-delivery/
 	install -m 0755 $(BIN_DIR)/$(BIN_FILE)-arm64 /tmp/$(DEB_ARM64)/usr/bin/$(BIN_FILE)
 	install -m 0755 $(BIN_DIR)/$(CLIENT_FILE)-arm64 /tmp/$(DEB_ARM64)/usr/bin/$(CLIENT_FILE)
 	install -m 0644 message-delivery.service /tmp/$(DEB_ARM64)/etc/systemd/system/message-delivery.service

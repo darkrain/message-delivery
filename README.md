@@ -185,6 +185,50 @@ For `telegram-gateway`, Telegram controls the verification message text. The ada
 
 That means producers should still publish `template=auth_verification_code`, but they must not expect Telegram Gateway to display the configured template text. The code shown to the user is the value from `variables.code`, or a Telegram-generated code if a future adapter mode omits `code`.
 
+### Email HTML Templates
+
+Email templates can be stored as files instead of long JSON strings. This is the preferred format for styled email.
+
+```json
+{
+  "Templates": {
+    "DefaultLocale": "en",
+    "BaseDir": "templates",
+    "Items": {
+      "auth_password_reset": {
+        "Subject": {
+          "en": "Password reset code",
+          "ru": "Код сброса пароля"
+        },
+        "TextBody": {
+          "en": "Your password reset code is {{code}}.",
+          "ru": "Ваш код сброса пароля: {{code}}."
+        },
+        "HtmlBodyFile": {
+          "en": "email/auth_password_reset.en.html",
+          "ru": "email/auth_password_reset.ru.html"
+        },
+        "RequiredVariables": ["code", "ttl_sec"]
+      }
+    }
+  }
+}
+```
+
+Supported body fields, in priority order:
+
+| Field | Description |
+|---|---|
+| `HtmlBody` | Inline HTML body from config. |
+| `HtmlBodyFile` | HTML body loaded from a file under `Templates.BaseDir`. |
+| `TextBody` | Inline text body from config. |
+| `TextBodyFile` | Text body loaded from a file under `Templates.BaseDir`. |
+| `Body` | Backward-compatible text body field. |
+
+If `HtmlBody` or `HtmlBodyFile` is used and `ContentType` is not set, the renderer sends `text/html; charset=UTF-8`. Text templates default to `text/plain; charset=UTF-8`.
+
+`Templates.BaseDir` can be relative. Relative paths are resolved against the config file location, so `/etc/message-delivery/config.json` with `BaseDir=templates` reads files from `/etc/message-delivery/templates`.
+
 ## Configuration
 
 Copy and edit the example config:

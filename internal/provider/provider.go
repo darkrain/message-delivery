@@ -21,6 +21,7 @@ type Message struct {
 	Template      string
 	Subject       string
 	Body          string
+	ContentType   string
 	RecipientType string
 	Recipient     string
 	Variables     map[string]string

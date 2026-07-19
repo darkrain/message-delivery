@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -96,12 +97,18 @@ func (a AdapterConfig) Int(key string) int {
 
 type TemplatesConfig struct {
 	DefaultLocale string                    `json:"DefaultLocale"`
+	BaseDir       string                    `json:"BaseDir"`
 	Items         map[string]TemplateConfig `json:"Items"`
 }
 
 type TemplateConfig struct {
 	Subject           map[string]string `json:"Subject"`
 	Body              map[string]string `json:"Body"`
+	TextBody          map[string]string `json:"TextBody"`
+	TextBodyFile      map[string]string `json:"TextBodyFile"`
+	HtmlBody          map[string]string `json:"HtmlBody"`
+	HtmlBodyFile      map[string]string `json:"HtmlBodyFile"`
+	ContentType       string            `json:"ContentType"`
 	RequiredVariables []string          `json:"RequiredVariables"`
 }
 
@@ -118,6 +125,7 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.applyEnv()
 	cfg.setDefaults()
+	cfg.resolvePaths(path)
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -198,6 +206,13 @@ func (c *Config) setDefaults() {
 	if c.Templates.Items == nil {
 		c.Templates.Items = map[string]TemplateConfig{}
 	}
+}
+
+func (c *Config) resolvePaths(configPath string) {
+	if c.Templates.BaseDir == "" || filepath.IsAbs(c.Templates.BaseDir) {
+		return
+	}
+	c.Templates.BaseDir = filepath.Join(filepath.Dir(configPath), c.Templates.BaseDir)
 }
 
 func (c *Config) Validate() error {

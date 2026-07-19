@@ -56,7 +56,11 @@ func (p *SMTP) Send(ctx context.Context, msg provider.Message) provider.Result {
 	mail.SetHeader("From", p.from)
 	mail.SetHeader("To", msg.Recipient)
 	mail.SetHeader("Subject", msg.Subject)
-	mail.SetBody("text/plain; charset=UTF-8", msg.Body)
+	contentType := msg.ContentType
+	if contentType == "" {
+		contentType = "text/plain; charset=UTF-8"
+	}
+	mail.SetBody(contentType, msg.Body)
 
 	dialer := gomail.NewDialer(p.host, p.port, p.username, p.password)
 	dialer.SSL = p.security == "tls" || (p.security == "" && p.port == 465)
