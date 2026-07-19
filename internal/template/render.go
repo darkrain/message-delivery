@@ -2,6 +2,7 @@ package template
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,9 +45,10 @@ func (r *Renderer) Render(templateKey string, locale string, variables map[strin
 	if body == "" {
 		return Rendered{}, fmt.Errorf("template: %s body is empty", templateKey)
 	}
+	escapeBody := strings.HasPrefix(strings.ToLower(contentType), "text/html")
 	return Rendered{
 		Subject:     replaceVariables(subject, variables),
-		Body:        replaceVariables(body, variables),
+		Body:        replaceVariables(body, variables, escapeBody),
 		ContentType: contentType,
 	}, nil
 }
@@ -86,14 +88,42 @@ func (r *Renderer) body(item config.TemplateConfig, locale string) (string, stri
 }
 
 func (r *Renderer) readTemplateFile(path string) (string, error) {
-	if !filepath.IsAbs(path) && r.cfg.BaseDir != "" {
-		path = filepath.Join(r.cfg.BaseDir, path)
-	}
-	data, err := os.ReadFile(path)
+	resolved, err := r.resolveTemplateFile(path)
 	if err != nil {
-		return "", fmt.Errorf("template: read file %q: %w", path, err)
+		return "", err
+	}
+	// #nosec G304 -- resolved path is constrained to Templates.BaseDir.
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return "", fmt.Errorf("template: read file %q: %w", resolved, err)
 	}
 	return string(data), nil
+}
+
+func (r *Renderer) resolveTemplateFile(path string) (string, error) {
+	if r.cfg.BaseDir == "" {
+		return "", fmt.Errorf("template: BaseDir is required for file templates")
+	}
+	base, err := filepath.Abs(filepath.Clean(r.cfg.BaseDir))
+	if err != nil {
+		return "", fmt.Errorf("template: resolve base dir: %w", err)
+	}
+	resolved := filepath.Clean(path)
+	if !filepath.IsAbs(resolved) {
+		resolved = filepath.Join(base, resolved)
+	}
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return "", fmt.Errorf("template: resolve file %q: %w", path, err)
+	}
+	rel, err := filepath.Rel(base, resolved)
+	if err != nil {
+		return "", fmt.Errorf("template: check file %q: %w", path, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("template: file %q escapes BaseDir", path)
+	}
+	return resolved, nil
 }
 
 func localized(values map[string]string, locale string, fallback string) string {
@@ -106,9 +136,13 @@ func localized(values map[string]string, locale string, fallback string) string 
 	return values[fallback]
 }
 
-func replaceVariables(value string, variables map[string]string) string {
+func replaceVariables(value string, variables map[string]string, escapeHTML ...bool) string {
 	result := value
+	escape := len(escapeHTML) > 0 && escapeHTML[0]
 	for key, variable := range variables {
+		if escape {
+			variable = html.EscapeString(variable)
+		}
 		result = strings.ReplaceAll(result, "{{"+key+"}}", variable)
 	}
 	return result

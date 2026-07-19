@@ -64,8 +64,12 @@ func main() {
 	)
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf("%s:%s", cfg.Host, cfg.Port),
-		Handler: healthHandler(Version),
+		Addr:              fmt.Sprintf("%s:%s", cfg.Host, cfg.Port),
+		Handler:           healthHandler(Version),
+		ReadHeaderTimeout: 3 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+		IdleTimeout:       30 * time.Second,
 	}
 
 	go func() {

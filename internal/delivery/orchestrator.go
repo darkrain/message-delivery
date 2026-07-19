@@ -50,17 +50,7 @@ func (o *Orchestrator) Handle(ctx context.Context, event *RequestEvent) (ResultE
 		return ResultEvent{}, fmt.Errorf("delivery: nil request event")
 	}
 	if o.seen != nil && o.seen.Seen(event.EventID) {
-		return ResultEvent{
-			Version:        event.Version,
-			EventID:        newEventID(),
-			Type:           EventTypeDeliveryResult,
-			RequestEventID: event.EventID,
-			Status:         StatusSent,
-			RecipientType:  event.RecipientType,
-			Recipient:      event.Recipient,
-			ErrorCode:      "duplicate_ignored",
-			CreatedAt:      time.Now().UTC(),
-		}, nil
+		return o.publish(ctx, event, "", 0, StatusSent, "duplicate_ignored")
 	}
 
 	defaultChain := o.cfg.DefaultProviderChain(event.RecipientType)

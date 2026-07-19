@@ -101,3 +101,17 @@ func TestLoadPasswordEnv(t *testing.T) {
 		t.Errorf("Broker.Password = %q, want from-env", cfg.Broker.Password)
 	}
 }
+
+func TestBrokerURLEscapesCredentials(t *testing.T) {
+	cfg := &Config{
+		Broker: BrokerConfig{
+			Host:     "localhost:5672",
+			User:     "user@example.com",
+			Password: "p@ss:word/with?chars",
+		},
+	}
+	want := "amqp://user%40example.com:p%40ss%3Aword%2Fwith%3Fchars@localhost:5672/"
+	if got := cfg.BrokerURL(); got != want {
+		t.Fatalf("BrokerURL() = %q, want %q", got, want)
+	}
+}

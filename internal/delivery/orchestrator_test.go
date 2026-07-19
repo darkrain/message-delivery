@@ -77,7 +77,8 @@ func TestOrchestratorRejectsNotAllowedProvider(t *testing.T) {
 
 func TestOrchestratorIdempotencySkipsDuplicate(t *testing.T) {
 	sms := fake.New("sms", provider.StatusSent)
-	orch := newTestOrchestrator(&capturePublisher{}, provider.NewRegistry(sms))
+	pub := &capturePublisher{}
+	orch := newTestOrchestrator(pub, provider.NewRegistry(sms))
 	event := phoneEvent("")
 	event.Delivery.ProviderChain = []string{"sms"}
 
@@ -93,6 +94,9 @@ func TestOrchestratorIdempotencySkipsDuplicate(t *testing.T) {
 	}
 	if sms.Count() != 1 {
 		t.Fatalf("sms count = %d, want 1", sms.Count())
+	}
+	if len(pub.results) != 2 || pub.results[1].ErrorCode != "duplicate_ignored" {
+		t.Fatalf("published results = %#v", pub.results)
 	}
 }
 

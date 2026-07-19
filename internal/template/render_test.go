@@ -74,3 +74,73 @@ func TestRenderHTMLTemplateFile(t *testing.T) {
 		t.Fatalf("ContentType = %q", rendered.ContentType)
 	}
 }
+
+func TestRenderHTMLTemplateEscapesVariables(t *testing.T) {
+	renderer := NewRenderer(config.TemplatesConfig{
+		DefaultLocale: "en",
+		Items: map[string]config.TemplateConfig{
+			"html": {
+				HtmlBody: map[string]string{"en": "<p>{{name}}</p>"},
+			},
+		},
+	})
+	rendered, err := renderer.Render("html", "en", map[string]string{"name": `<script>alert("x")</script>`})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if strings.Contains(rendered.Body, "<script>") {
+		t.Fatalf("Body was not escaped: %q", rendered.Body)
+	}
+	if !strings.Contains(rendered.Body, "&lt;script&gt;") {
+		t.Fatalf("Body = %q, want escaped script tag", rendered.Body)
+	}
+}
+
+func TestRenderTextTemplateDoesNotHTMLEscapeVariables(t *testing.T) {
+	renderer := NewRenderer(config.TemplatesConfig{
+		DefaultLocale: "en",
+		Items: map[string]config.TemplateConfig{
+			"text": {
+				TextBody: map[string]string{"en": "Hello {{name}}"},
+			},
+		},
+	})
+	rendered, err := renderer.Render("text", "en", map[string]string{"name": "<Anna>"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if rendered.Body != "Hello <Anna>" {
+		t.Fatalf("Body = %q", rendered.Body)
+	}
+}
+
+func TestRenderTemplateFileRejectsBaseDirEscape(t *testing.T) {
+	renderer := NewRenderer(config.TemplatesConfig{
+		DefaultLocale: "en",
+		BaseDir:       t.TempDir(),
+		Items: map[string]config.TemplateConfig{
+			"escape": {
+				HtmlBodyFile: map[string]string{"en": "../outside.html"},
+			},
+		},
+	})
+	_, err := renderer.Render("escape", "en", nil)
+	if err == nil || !strings.Contains(err.Error(), "escapes BaseDir") {
+		t.Fatalf("err = %v, want BaseDir escape error", err)
+	}
+}
+
+func TestRenderTemplateFileRequiresBaseDir(t *testing.T) {
+	renderer := NewRenderer(config.TemplatesConfig{
+		DefaultLocale: "en",
+		Items: map[string]config.TemplateConfig{
+			"file": {
+				HtmlBodyFile: map[string]string{"en": "email/file.html"},
+			},
+		},
+	})
+	_, err := renderer.Render("file", "en", nil)
+	if err == nil || !strings.Contains(err.Error(), "BaseDir is required") {
+		t.Fatalf("err = %v, want BaseDir required error", err)
+	}
+}

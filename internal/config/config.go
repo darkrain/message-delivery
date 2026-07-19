@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -113,6 +114,8 @@ type TemplateConfig struct {
 }
 
 func Load(path string) (*Config, error) {
+	path = filepath.Clean(path)
+	// #nosec G304 -- the config path is an operator-provided startup argument.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("config: open %q: %w", path, err)
@@ -247,8 +250,13 @@ func (c *Config) Validate() error {
 }
 
 func (c *Config) BrokerURL() string {
-	password := c.Broker.Password
-	return fmt.Sprintf("amqp://%s:%s@%s/", c.Broker.User, password, c.Broker.Host)
+	u := url.URL{
+		Scheme: "amqp",
+		User:   url.UserPassword(c.Broker.User, c.Broker.Password),
+		Host:   c.Broker.Host,
+		Path:   "/",
+	}
+	return u.String()
 }
 
 func (c *Config) AllowedProvider(recipientType, provider string) bool {

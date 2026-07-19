@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -87,7 +88,7 @@ func (p *Gateway) Send(ctx context.Context, msg provider.Message) provider.Resul
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "telegram_bad_response"}
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
