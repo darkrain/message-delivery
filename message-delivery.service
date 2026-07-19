@@ -1,0 +1,15 @@
+[Unit]
+Description=message-delivery
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/message-delivery --config /etc/message-delivery/config.json
+Restart=always
+RestartSec=5
+User=message-delivery
+Group=message-delivery
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

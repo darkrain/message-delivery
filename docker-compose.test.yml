@@ -1,0 +1,14 @@
+services:
+  message-delivery:
+    build: .
+    environment:
+      MESSAGE_DELIVERY_BROKER_HOST: ${MESSAGE_DELIVERY_BROKER_HOST:-host.docker.internal:5672}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      TELEGRAM_GATEWAY_API_TOKEN: ${TELEGRAM_GATEWAY_API_TOKEN:-}
+    volumes:
+      - ./message-delivery.example.json:/etc/message-delivery/config.json:ro
+    command: ["--config", "/etc/message-delivery/config.json"]
+    ports:
+      - "8090:8090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

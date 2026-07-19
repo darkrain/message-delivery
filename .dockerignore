@@ -1,0 +1,9 @@
+.git
+bin
+vendor
+*.deb
+*.test
+*.out
+.env
+*.env
+tmp

@@ -1,0 +1,49 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5674:5672"
+      - "15674:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  message-delivery:
+    build: .
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./message-delivery.example.json:/etc/message-delivery/config.json:ro
+    command: ["--config", "/etc/message-delivery/config.json"]
+    environment:
+      RABBITMQ_PASSWORD: guest
+      MESSAGE_DELIVERY_BROKER_HOST: rabbitmq:5672
+    ports:
+      - "8091:8090"
+    healthcheck:
+      test: ["CMD", "/usr/bin/message-delivery", "--healthcheck", "http://localhost:8090/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  tests:
+    image: golang:1.23
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      message-delivery:
+        condition: service_healthy
+    working_dir: /src
+    volumes:
+      - .:/src
+    environment:
+      MESSAGE_DELIVERY_INTEGRATION: "1"
+      MESSAGE_DELIVERY_BROKER_HOST: rabbitmq:5672
+      RABBITMQ_PASSWORD: guest
+    command: ["go", "test", "./..."]

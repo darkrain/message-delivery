@@ -1,0 +1,86 @@
+{
+  "Host": "",
+  "Port": "8090",
+  "Broker": {
+    "Host": "127.0.0.1:5673",
+    "User": "guest",
+    "Password": "",
+    "PasswordEnv": "RABBITMQ_PASSWORD",
+    "ExchangeName": "messages.events",
+    "ExchangeKind": "topic",
+    "ConsumeQueue": "message.delivery.requests",
+    "PrefetchCount": 8,
+    "RoutingKeys": {
+      "DeliveryRequested": "message.delivery.requested",
+      "DeliveryResult": "message.delivery.result"
+    }
+  },
+  "Providers": {
+    "Email": {
+      "Enabled": true,
+      "DefaultProvider": "smtp",
+      "AllowedProviders": ["smtp"],
+      "Adapters": {
+        "smtp": {
+          "Enabled": true,
+          "Kind": "smtp",
+          "Host": "smtp.yandex.com",
+          "Port": 465,
+          "Security": "tls",
+          "AuthHost": "smtp.yandex.com",
+          "TimeoutSec": 20,
+          "UsernameEnv": "SMTP_USERNAME",
+          "PasswordEnv": "SMTP_PASSWORD",
+          "FromEnv": "SMTP_FROM"
+        }
+      }
+    },
+    "Phone": {
+      "DefaultProviderChain": ["sms"],
+      "AllowedProviders": ["sms"],
+      "Adapters": {
+        "sms": {
+          "Enabled": true,
+          "Kind": "fake",
+          "Status": "sent"
+        }
+      }
+    }
+  },
+  "Templates": {
+    "DefaultLocale": "en",
+    "BaseDir": "templates",
+    "Items": {
+      "auth_verification_code": {
+        "Subject": {
+          "en": "Verification code",
+          "ru": "Код подтверждения"
+        },
+        "TextBody": {
+          "en": "Your code is {{code}}. It expires in {{ttl_sec}} seconds.",
+          "ru": "Ваш код: {{code}}. Он действует {{ttl_sec}} секунд."
+        },
+        "HtmlBodyFile": {
+          "en": "email/auth_verification_code.en.html",
+          "ru": "email/auth_verification_code.ru.html"
+        },
+        "RequiredVariables": ["code", "ttl_sec"]
+      },
+      "auth_password_reset": {
+        "Subject": {
+          "en": "Password reset code",
+          "ru": "Код сброса пароля"
+        },
+        "TextBody": {
+          "en": "Your password reset code is {{code}}. It expires in {{ttl_sec}} seconds.",
+          "ru": "Ваш код сброса пароля: {{code}}. Он действует {{ttl_sec}} секунд."
+        },
+        "HtmlBodyFile": {
+          "en": "email/auth_password_reset.en.html",
+          "ru": "email/auth_password_reset.ru.html"
+        },
+        "RequiredVariables": ["code", "ttl_sec"]
+      }
+    }
+  }
+}
