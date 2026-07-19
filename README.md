@@ -15,6 +15,7 @@ It is intentionally not tied to any product domain. Producers such as `auth-serv
 - User-selected provider support
 - In-memory idempotency for local/test runs
 - Template rendering with locale fallback
+- File-based HTML email templates with text fallback
 - Fake providers for local and integration tests
 - Health endpoint
 - Makefile, systemd unit, Dockerfile, `.deb` packaging
@@ -32,7 +33,7 @@ Main components:
 | `internal/broker` | Owns RabbitMQ connection, exchange/queue/DLQ declaration, consuming request events and publishing result events. |
 | `internal/worker` | Reads RabbitMQ deliveries, decodes requests, acknowledges successful handling and dead-letters invalid messages. |
 | `internal/delivery` | Contains request/result contracts and the orchestration algorithm. |
-| `internal/template` | Renders configured templates using event variables and locale fallback. |
+| `internal/template` | Renders configured inline/file templates using event variables and locale fallback. |
 | `internal/provider` | Defines provider interfaces, registry, fake/unavailable providers and concrete adapters. |
 | `tests/integration` | Runs real RabbitMQ consume/publish flow in Docker Compose. |
 
@@ -81,6 +82,7 @@ That keeps Telegram, WhatsApp, SMS, SMTP, SES, Mailgun or other providers replac
 Configuration is split into:
 
 - tracked JSON config for non-secret routing, templates and adapter shape;
+- tracked `templates/` files for reusable HTML/text email layouts;
 - env/runtime secrets for tokens, passwords and external credentials;
 - env overrides for deployment-specific broker/port settings.
 
@@ -189,6 +191,17 @@ That means producers should still publish `template=auth_verification_code`, but
 
 Email templates can be stored as files instead of long JSON strings. This is the preferred format for styled email.
 
+The repository layout is:
+
+```text
+templates/
+  email/
+    auth_verification_code.en.html
+    auth_verification_code.ru.html
+    auth_password_reset.en.html
+    auth_password_reset.ru.html
+```
+
 ```json
 {
   "Templates": {
@@ -228,6 +241,41 @@ Supported body fields, in priority order:
 If `HtmlBody` or `HtmlBodyFile` is used and `ContentType` is not set, the renderer sends `text/html; charset=UTF-8`. Text templates default to `text/plain; charset=UTF-8`.
 
 `Templates.BaseDir` can be relative. Relative paths are resolved against the config file location, so `/etc/message-delivery/config.json` with `BaseDir=templates` reads files from `/etc/message-delivery/templates`.
+
+Deployment behavior:
+
+| Runtime | Template location |
+|---|---|
+| Local `go run --config message-delivery.example.json` | `./templates` |
+| Docker image | `/etc/message-delivery/templates` |
+| `make install` | `/etc/message-delivery/templates` |
+| `.deb` package | `/etc/message-delivery/templates` |
+
+To add a new styled email:
+
+1. Add one HTML file per locale under `templates/email/`.
+2. Add `Subject`, `TextBody` and `HtmlBodyFile` to `Templates.Items`.
+3. Keep `RequiredVariables` in sync with placeholders used by the HTML/text bodies.
+4. Publish the same template key in `message.delivery.requested.template`.
+
+Example request:
+
+```json
+{
+  "template": "auth_password_reset",
+  "recipient_type": "email",
+  "recipient": "user@example.com",
+  "variables": {
+    "code": "112233",
+    "ttl_sec": "300"
+  },
+  "metadata": {
+    "locale": "ru"
+  }
+}
+```
+
+For this request, SMTP sends `templates/email/auth_password_reset.ru.html` as `text/html; charset=UTF-8`.
 
 ## Configuration
 
