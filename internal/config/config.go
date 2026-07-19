@@ -198,7 +198,7 @@ func (c *Config) setDefaults() {
 		c.Providers.Email.AllowedProviders = []string{c.Providers.Email.DefaultProvider}
 	}
 	if len(c.Providers.Phone.DefaultProviderChain) == 0 {
-		c.Providers.Phone.DefaultProviderChain = []string{"telegram", "whatsapp", "sms"}
+		c.Providers.Phone.DefaultProviderChain = []string{"telegram", "sms"}
 	}
 	if len(c.Providers.Phone.AllowedProviders) == 0 {
 		c.Providers.Phone.AllowedProviders = c.Providers.Phone.DefaultProviderChain

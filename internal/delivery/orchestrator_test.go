@@ -19,13 +19,13 @@ func (p *capturePublisher) PublishResult(_ context.Context, event ResultEvent) e
 	return nil
 }
 
-func TestOrchestratorFallsBackTelegramWhatsAppSMS(t *testing.T) {
+func TestOrchestratorFallsBackAcrossProviderChain(t *testing.T) {
 	telegram := fake.New("telegram", provider.StatusUndeliverable)
-	whatsapp := fake.New("whatsapp", provider.StatusUndeliverable)
+	backup := fake.New("backup", provider.StatusUndeliverable)
 	sms := fake.New("sms", provider.StatusSent)
 	pub := &capturePublisher{}
 
-	orch := newTestOrchestrator(pub, provider.NewRegistry(telegram, whatsapp, sms))
+	orch := newTestOrchestrator(pub, provider.NewRegistry(telegram, backup, sms))
 	result, err := orch.Handle(context.Background(), phoneEvent(""))
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -33,8 +33,8 @@ func TestOrchestratorFallsBackTelegramWhatsAppSMS(t *testing.T) {
 	if result.Status != StatusSent || result.Provider != "sms" || result.Attempt != 3 {
 		t.Fatalf("result = %#v", result)
 	}
-	if telegram.Count() != 1 || whatsapp.Count() != 1 || sms.Count() != 1 {
-		t.Fatalf("provider counts telegram=%d whatsapp=%d sms=%d", telegram.Count(), whatsapp.Count(), sms.Count())
+	if telegram.Count() != 1 || backup.Count() != 1 || sms.Count() != 1 {
+		t.Fatalf("provider counts telegram=%d backup=%d sms=%d", telegram.Count(), backup.Count(), sms.Count())
 	}
 	if len(pub.results) != 1 || pub.results[0].Provider != "sms" {
 		t.Fatalf("published results = %#v", pub.results)
@@ -105,8 +105,8 @@ func newTestOrchestrator(pub ResultPublisher, registry *provider.Registry) *Orch
 		Providers: config.ProvidersConfig{
 			Email: config.ChannelConfig{DefaultProvider: "email", AllowedProviders: []string{"email"}},
 			Phone: config.PhoneConfig{
-				DefaultProviderChain: []string{"telegram", "whatsapp", "sms"},
-				AllowedProviders:     []string{"telegram", "whatsapp", "sms"},
+				DefaultProviderChain: []string{"telegram", "backup", "sms"},
+				AllowedProviders:     []string{"telegram", "backup", "sms"},
 			},
 		},
 		Templates: testTemplates(),
@@ -125,7 +125,7 @@ func phoneEvent(selectedProvider string) *RequestEvent {
 		Variables:     map[string]string{"code": "123456", "ttl_sec": "300"},
 		Delivery: DeliveryPolicy{
 			SelectedProvider: selectedProvider,
-			ProviderChain:    []string{"telegram", "whatsapp", "sms"},
+			ProviderChain:    []string{"telegram", "backup", "sms"},
 			AllowFallback:    true,
 		},
 		Metadata: map[string]string{"locale": "en"},

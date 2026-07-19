@@ -47,20 +47,20 @@ func TestNewRegistryFromConfigDisabledProviderIsUnavailable(t *testing.T) {
 		Providers: config.ProvidersConfig{
 			Phone: config.PhoneConfig{
 				Adapters: map[string]config.AdapterConfig{
-					"whatsapp": {"Enabled": false, "Kind": "fake", "Status": "sent"},
+					"disabled-phone": {"Enabled": false, "Kind": "fake", "Status": "sent"},
 				},
 			},
 		},
 	}
 
 	registry := NewRegistryFromConfig(cfg)
-	whatsapp, ok := registry.Get("whatsapp")
+	disabledPhone, ok := registry.Get("disabled-phone")
 	if !ok {
-		t.Fatal("whatsapp provider missing")
+		t.Fatal("disabled-phone provider missing")
 	}
-	result := whatsapp.Send(context.Background(), provider.Message{})
+	result := disabledPhone.Send(context.Background(), provider.Message{})
 	if result.Status != provider.StatusUndeliverable || result.ErrorCode != "provider_disabled" {
-		t.Fatalf("whatsapp result = %#v", result)
+		t.Fatalf("disabled-phone result = %#v", result)
 	}
 }
 

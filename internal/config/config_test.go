@@ -17,8 +17,8 @@ func TestLoadExampleConfig(t *testing.T) {
 	if !strings.HasSuffix(cfg.Templates.BaseDir, "templates") {
 		t.Errorf("Templates.BaseDir = %q, want templates suffix", cfg.Templates.BaseDir)
 	}
-	if got := cfg.DefaultProviderChain("phone"); len(got) != 3 {
-		t.Errorf("phone chain len = %d, want 3", len(got))
+	if got := cfg.DefaultProviderChain("phone"); len(got) != 2 || got[0] != "telegram" || got[1] != "sms" {
+		t.Errorf("phone chain = %#v, want telegram -> sms", got)
 	}
 	if !cfg.AllowedProvider("phone", "telegram") {
 		t.Error("telegram should be allowed for phone")

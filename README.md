@@ -52,6 +52,36 @@ producer
   -> publish message.delivery.result
 ```
 
+Scaled processing view:
+
+```mermaid
+flowchart LR
+    A[auth-service / API / future producers] -->|message.delivery.requested| B[(RabbitMQ exchange<br/>messages.events)]
+    B --> C[[message.delivery.requests]]
+    C --> D1[message-delivery worker #1]
+    C --> D2[message-delivery worker #2]
+    C --> D3[message-delivery worker #N]
+
+    D1 --> E[render template]
+    D2 --> E
+    D3 --> E
+    E --> F{recipient type}
+
+    F -->|email| G[smtp / fake email]
+    F -->|phone| H[telegram-gateway]
+    H -->|undeliverable| I[sms adapter<br/>future real provider]
+
+    G --> J[(RabbitMQ result<br/>message.delivery.result)]
+    H --> J
+    I --> J
+
+    D1 --> K[(in-memory idempotency<br/>per process)]
+    D2 --> K
+    D3 --> K
+```
+
+Horizontal scaling is done by running more `message-delivery` instances against the same RabbitMQ queue. RabbitMQ distributes messages across consumers. Current idempotency is process-local, so a production deployment that scales workers should add a shared idempotency store before relying on exactly-once behavior across restarts or replicas.
+
 Failure flow:
 
 ```text
@@ -110,7 +140,7 @@ This repository contains the service artifact and local/test runtime. Kubernetes
   "created_at": "2026-07-18T18:00:00Z",
   "delivery": {
     "selected_provider": "",
-    "provider_chain": ["telegram", "whatsapp", "sms"],
+    "provider_chain": ["telegram", "sms"],
     "allow_fallback": true
   },
   "metadata": {
@@ -132,7 +162,7 @@ This repository contains the service artifact and local/test runtime. Kubernetes
   "recipient_type": "phone",
   "recipient": "+10000000000",
   "provider": "sms",
-  "attempt": 3,
+  "attempt": 2,
   "created_at": "2026-07-18T18:00:01Z"
 }
 ```
@@ -142,25 +172,31 @@ This repository contains the service artifact and local/test runtime. Kubernetes
 For phone recipients, the default provider chain is:
 
 ```text
-telegram -> whatsapp -> sms
+telegram -> sms
 ```
 
 If `delivery.selected_provider` is set and `allow_fallback=false`, only that provider is tried. If `allow_fallback=true`, the selected provider is tried first and the chain continues on `undeliverable`.
 
-The current implementation includes fake providers for deterministic local tests:
+Implemented adapter kinds:
+
+| Kind | Channel | Status |
+|---|---|---|
+| `fake` | email, phone | Implemented. Used for deterministic local/integration tests. |
+| `smtp` | email | Implemented. Sends rendered text or HTML email through SMTP using `gomail`. |
+| `telegram-gateway` | phone | Implemented. Sends Telegram Gateway verification messages. |
+
+The default example config uses fake providers for deterministic local tests:
 
 - `fake-email` sends successfully.
 - `telegram` returns `undeliverable`.
-- `whatsapp` returns `undeliverable`.
 - `sms` sends successfully.
 
-Supported adapter kinds:
+Not implemented yet:
 
-- `fake` for local and integration tests.
-- `smtp` for generic email delivery.
-- `telegram-gateway` for Telegram Gateway verification messages.
+- WhatsApp delivery adapter.
+- Real SMS provider adapters such as Twilio.
 
-WhatsApp and Twilio/SMS adapters are intentionally registered as explicit `not_configured` placeholders until provider credentials and exact contracts are selected.
+Do not put `whatsapp`, `twilio` or another future provider into `AllowedProviders` until a matching adapter kind is implemented in `internal/provider/factory`.
 
 ## Template Behavior
 
@@ -392,7 +428,7 @@ go run ./cmd/send-test-message \
   --purpose registration_verification \
   --code 123456 \
   --ttl-sec 300 \
-  --provider-chain telegram,whatsapp,sms \
+  --provider-chain telegram,sms \
   --allow-fallback=true \
   --wait-result=true
 ```
@@ -419,7 +455,7 @@ Example request for phone verification:
   "created_at": "2026-07-18T18:00:00Z",
   "delivery": {
     "selected_provider": "",
-    "provider_chain": ["telegram", "whatsapp", "sms"],
+    "provider_chain": ["telegram", "sms"],
     "allow_fallback": true
   },
   "metadata": {
@@ -440,11 +476,11 @@ rabbitmqadmin \
   publish \
   exchange=messages.events \
   routing_key=message.delivery.requested \
-  payload='{"version":"v1","event_id":"manual-phone-1","type":"message.delivery.requested","source":"auth-service","template":"auth_verification_code","purpose":"registration_verification","recipient_type":"phone","recipient":"+15551234567","variables":{"code":"123456","ttl_sec":"300"},"user_id":123,"created_at":"2026-07-18T18:00:00Z","delivery":{"selected_provider":"","provider_chain":["telegram","whatsapp","sms"],"allow_fallback":true},"metadata":{"locale":"en","device_uid":"device-1"}}' \
+  payload='{"version":"v1","event_id":"manual-phone-1","type":"message.delivery.requested","source":"auth-service","template":"auth_verification_code","purpose":"registration_verification","recipient_type":"phone","recipient":"+15551234567","variables":{"code":"123456","ttl_sec":"300"},"user_id":123,"created_at":"2026-07-18T18:00:00Z","delivery":{"selected_provider":"","provider_chain":["telegram","sms"],"allow_fallback":true},"metadata":{"locale":"en","device_uid":"device-1"}}' \
   properties='{"content_type":"application/json","delivery_mode":2}'
 ```
 
-With the default example config this uses fake providers: Telegram and WhatsApp return `undeliverable`, then SMS returns `sent`.
+With the default example config this uses fake providers: Telegram returns `undeliverable`, then SMS returns `sent`.
 
 After `make build`, the same command is available as:
 
@@ -634,7 +670,7 @@ If the result is `smtp_connect_failed`, check outbound TCP access from the host/
 | `--metadata` | Additional metadata as JSON object, for example `{\"device_uid\":\"dev-1\"}`. |
 | `--locale` | Sets `metadata.locale`. |
 | `--provider` | Selected provider, for example `telegram`. |
-| `--provider-chain` | Comma-separated chain, for example `telegram,whatsapp,sms`. |
+| `--provider-chain` | Comma-separated chain, for example `telegram,sms`. |
 | `--allow-fallback` | Whether to continue after `undeliverable`. |
 | `--wait-result` | Wait for matching result event and print it. Defaults to `true`. |
 | `--timeout` | Publish/result timeout. Defaults to `15s`. |
@@ -688,7 +724,7 @@ Expected result shape:
   "recipient_type": "phone",
   "recipient": "+15551234567",
   "provider": "sms",
-  "attempt": 3,
+  "attempt": 2,
   "created_at": "2026-07-18T18:00:01Z"
 }
 ```
@@ -701,19 +737,19 @@ To force Telegram only:
 {
   "delivery": {
     "selected_provider": "telegram",
-    "provider_chain": ["telegram", "whatsapp", "sms"],
+    "provider_chain": ["telegram", "sms"],
     "allow_fallback": false
   }
 }
 ```
 
-To prefer WhatsApp but allow fallback:
+To prefer Telegram but allow fallback to SMS:
 
 ```json
 {
   "delivery": {
-    "selected_provider": "whatsapp",
-    "provider_chain": ["telegram", "whatsapp", "sms"],
+    "selected_provider": "telegram",
+    "provider_chain": ["telegram", "sms"],
     "allow_fallback": true
   }
 }
@@ -771,7 +807,7 @@ The tests cover:
 - provider plan calculation;
 - template rendering;
 - provider registry creation from config;
-- fallback from Telegram to WhatsApp to SMS;
+- fallback from Telegram to SMS;
 - selected provider without fallback;
 - invalid provider handling;
 - idempotency;

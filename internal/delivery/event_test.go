@@ -36,7 +36,7 @@ func TestProviderPlanSelectedWithoutFallback(t *testing.T) {
 	event := RequestEvent{
 		Delivery: DeliveryPolicy{
 			SelectedProvider: "telegram",
-			ProviderChain:    []string{"telegram", "whatsapp", "sms"},
+			ProviderChain:    []string{"telegram", "sms"},
 			AllowFallback:    false,
 		},
 	}
@@ -49,13 +49,13 @@ func TestProviderPlanSelectedWithoutFallback(t *testing.T) {
 func TestProviderPlanSelectedWithFallback(t *testing.T) {
 	event := RequestEvent{
 		Delivery: DeliveryPolicy{
-			SelectedProvider: "whatsapp",
-			ProviderChain:    []string{"telegram", "whatsapp", "sms"},
+			SelectedProvider: "backup",
+			ProviderChain:    []string{"telegram", "backup", "sms"},
 			AllowFallback:    true,
 		},
 	}
-	plan := event.ProviderPlan([]string{"telegram", "whatsapp", "sms"})
-	want := []string{"whatsapp", "telegram", "sms"}
+	plan := event.ProviderPlan([]string{"telegram", "backup", "sms"})
+	want := []string{"backup", "telegram", "sms"}
 	if len(plan) != len(want) {
 		t.Fatalf("plan len = %d", len(plan))
 	}

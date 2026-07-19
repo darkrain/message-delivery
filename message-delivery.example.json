@@ -41,8 +41,8 @@
       }
     },
     "Phone": {
-      "DefaultProviderChain": ["telegram", "whatsapp", "sms"],
-      "AllowedProviders": ["telegram", "whatsapp", "sms", "twilio"],
+      "DefaultProviderChain": ["telegram", "sms"],
+      "AllowedProviders": ["telegram", "sms"],
       "Adapters": {
         "telegram": {
           "Enabled": true,
@@ -52,24 +52,10 @@
           "TimeoutSec": 10,
           "ApiTokenEnv": "TELEGRAM_GATEWAY_API_TOKEN"
         },
-        "whatsapp": {
-          "Enabled": true,
-          "Kind": "fake",
-          "Status": "undeliverable",
-          "AccessTokenEnv": "WHATSAPP_ACCESS_TOKEN",
-          "PhoneNumberIdEnv": "WHATSAPP_PHONE_NUMBER_ID"
-        },
         "sms": {
           "Enabled": true,
           "Kind": "fake",
           "Status": "sent"
-        },
-        "twilio": {
-          "Enabled": false,
-          "Kind": "twilio",
-          "AccountSidEnv": "TWILIO_ACCOUNT_SID",
-          "AuthTokenEnv": "TWILIO_AUTH_TOKEN",
-          "FromEnv": "TWILIO_FROM"
         }
       }
     }

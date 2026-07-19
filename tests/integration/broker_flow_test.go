@@ -59,7 +59,7 @@ func TestRabbitMQDeliveryFlow(t *testing.T) {
 		Recipient:     "+10000000000",
 		Variables:     map[string]string{"code": "123456", "ttl_sec": "300"},
 		Delivery: delivery.DeliveryPolicy{
-			ProviderChain: []string{"telegram", "whatsapp", "sms"},
+			ProviderChain: []string{"telegram", "sms"},
 			AllowFallback: true,
 		},
 		Metadata: map[string]string{"locale": "en"},
@@ -88,7 +88,7 @@ func TestRabbitMQDeliveryFlow(t *testing.T) {
 		if result.RequestEventID != request.EventID {
 			t.Fatalf("request_event_id = %q, want %q", result.RequestEventID, request.EventID)
 		}
-		if result.Status != delivery.StatusSent || result.Provider != "sms" || result.Attempt != 3 {
+		if result.Status != delivery.StatusSent || result.Provider != "sms" || result.Attempt != 2 {
 			t.Fatalf("result = %#v", result)
 		}
 	case <-ctx.Done():
