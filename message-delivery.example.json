@@ -93,6 +93,21 @@
           "ru": "email/auth_password_reset.ru.html"
         },
         "RequiredVariables": ["code", "ttl_sec"]
+      },
+      "chat_message_notification": {
+        "Subject": {
+          "en": "New message from {{sender}}",
+          "ru": "Новое сообщение от {{sender}}"
+        },
+        "TextBody": {
+          "en": "{{message}}",
+          "ru": "{{message}}"
+        },
+        "HtmlBodyFile": {
+          "en": "email/chat_message_notification.en.html",
+          "ru": "email/chat_message_notification.ru.html"
+        },
+        "RequiredVariables": ["sender", "message", "chat_id"]
       }
     }
   }

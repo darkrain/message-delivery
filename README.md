@@ -16,6 +16,7 @@ It is intentionally not tied to any product domain. Producers such as `auth-serv
 - In-memory idempotency for local/test runs
 - Template rendering with locale fallback
 - File-based HTML email templates with text fallback
+- Reusable `chat_message_notification` HTML template for chat delivery
 - Fake providers for local and integration tests
 - Health endpoint
 - Makefile, systemd unit, Dockerfile, `.deb` packaging
@@ -117,6 +118,51 @@ Configuration is split into:
 - env overrides for deployment-specific broker/port settings.
 
 This repository contains the service artifact and local/test runtime. Kubernetes or production infrastructure manifests should live in a separate deploy repository.
+
+For a systemd installation, `make install` creates the dedicated
+`message-delivery` system user, installs the unit and reads deployment secrets
+from the optional `/etc/message-delivery/message-delivery.env`. For example:
+
+```dotenv
+RABBITMQ_PASSWORD=replace-with-a-secret
+SMTP_USERNAME=no-reply@example.com
+SMTP_PASSWORD=replace-with-a-secret
+```
+
+The tracked JSON configuration must refer to those variables through
+`PasswordEnv` and provider-specific `*Env` fields; credentials do not belong in
+the repository or the JSON config.
+
+### Chat message notification template
+
+`chat_message_notification` is the implemented HTML email template for an
+asynchronous copy of an incoming chat message. It requires `sender`, `message`
+and `chat_id`; the last value is delivery metadata and is deliberately not
+interpreted by this service.
+
+```json
+{
+  "version": "1.0",
+  "event_id": "chat-message-notification-42",
+  "type": "message.delivery.requested",
+  "source": "api.notifications",
+  "template": "chat_message_notification",
+  "purpose": "notification",
+  "recipient_type": "email",
+  "recipient": "user@example.com",
+  "variables": {
+    "sender": "Anna",
+    "message": "Hello",
+    "chat_id": "71"
+  },
+  "delivery": { "allow_fallback": true },
+  "metadata": { "locale": "en" }
+}
+```
+
+The configuration example ships English and Russian file templates in
+`templates/email/chat_message_notification.*.html`. SMTP treats all variables as
+untrusted HTML and escapes them before rendering.
 
 ## Event Contract
 
