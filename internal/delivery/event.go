@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 )
 
@@ -92,19 +93,21 @@ func (e *RequestEvent) Validate() error {
 }
 
 // TelegramConnectionRequestedEvent is emitted by the webhook after a user
-// starts the bot. The API hashes StartToken before comparing it to the stored
-// one-time connection ticket, so the raw value is never persisted.
+// starts the bot. The webhook hashes the one-time ticket before publishing,
+// so RabbitMQ and the API only receive its SHA-256 value.
 type TelegramConnectionRequestedEvent struct {
-	Version      string    `json:"version"`
-	EventID      string    `json:"event_id"`
-	Type         string    `json:"type"`
-	Source       string    `json:"source"`
-	UpdateID     int64     `json:"update_id"`
-	ChatID       int64     `json:"chat_id"`
-	ChatUsername string    `json:"chat_username,omitempty"`
-	StartToken   string    `json:"start_token"`
-	CreatedAt    time.Time `json:"created_at"`
+	Version        string    `json:"version"`
+	EventID        string    `json:"event_id"`
+	Type           string    `json:"type"`
+	Source         string    `json:"source"`
+	UpdateID       int64     `json:"update_id"`
+	ChatID         int64     `json:"chat_id"`
+	ChatUsername   string    `json:"chat_username,omitempty"`
+	StartTokenHash string    `json:"start_token_hash"`
+	CreatedAt      time.Time `json:"created_at"`
 }
+
+var telegramStartTokenHash = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func (e TelegramConnectionRequestedEvent) Validate() error {
 	if e.Version == "" || e.EventID == "" || e.Source == "" {
@@ -113,7 +116,7 @@ func (e TelegramConnectionRequestedEvent) Validate() error {
 	if e.Type != EventTypeTelegramConnectionRequested {
 		return fmt.Errorf("telegram connection event has unsupported type %q", e.Type)
 	}
-	if e.UpdateID <= 0 || e.ChatID <= 0 || e.StartToken == "" {
+	if e.UpdateID <= 0 || e.ChatID <= 0 || !telegramStartTokenHash.MatchString(e.StartTokenHash) {
 		return errors.New("telegram connection event payload is invalid")
 	}
 	return nil

@@ -2,6 +2,7 @@ package telegrambot
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -110,7 +111,12 @@ func telegramConnectionEvent(update update) (delivery.TelegramConnectionRequeste
 	event := delivery.TelegramConnectionRequestedEvent{
 		Version: "1.0", EventID: fmt.Sprintf("telegram-bot-update-%d", update.UpdateID), Type: delivery.EventTypeTelegramConnectionRequested,
 		Source: "message-delivery.telegram-bot", UpdateID: update.UpdateID, ChatID: update.Message.Chat.ID, ChatUsername: username,
-		StartToken: matches[1], CreatedAt: time.Now().UTC(),
+		StartTokenHash: telegramStartTokenHash(matches[1]), CreatedAt: time.Now().UTC(),
 	}
 	return event, event.Validate() == nil
+}
+
+func telegramStartTokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return fmt.Sprintf("%x", sum[:])
 }

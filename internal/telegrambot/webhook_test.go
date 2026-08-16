@@ -2,6 +2,8 @@ package telegrambot
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,7 +36,9 @@ func TestWebhookPublishesPrivateStartCommand(t *testing.T) {
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("status = %d", response.Code)
 	}
-	if publisher.event.EventID != "telegram-bot-update-17" || publisher.event.ChatID != 55 || publisher.event.StartToken != "abcdefghijklmnopqrstuvwxyz1234567890_-" {
+	ticket := "abcdefghijklmnopqrstuvwxyz1234567890_-"
+	hash := sha256.Sum256([]byte(ticket))
+	if publisher.event.EventID != "telegram-bot-update-17" || publisher.event.ChatID != 55 || publisher.event.StartTokenHash != fmt.Sprintf("%x", hash[:]) {
 		t.Fatalf("event = %#v", publisher.event)
 	}
 }
