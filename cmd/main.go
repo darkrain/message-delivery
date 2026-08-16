@@ -66,7 +66,11 @@ func main() {
 
 	handler := healthHandler(Version)
 	if cfg.TelegramBot.Enabled {
-		webhook, err := telegrambot.NewWebhookHandler(cfg.TelegramBot, os.Getenv(cfg.TelegramBot.WebhookSecretEnv), b, logger)
+		welcomeSender, ok := registry.Get(cfg.Providers.Telegram.DefaultProvider)
+		if !ok {
+			logger.Fatalf("failed to find Telegram Bot provider %q", cfg.Providers.Telegram.DefaultProvider)
+		}
+		webhook, err := telegrambot.NewWebhookHandler(cfg.TelegramBot, os.Getenv(cfg.TelegramBot.WebhookSecretEnv), b, welcomeSender, logger)
 		if err != nil {
 			logger.Fatalf("failed to create Telegram Bot webhook: %v", err)
 		}

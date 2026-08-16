@@ -14,6 +14,7 @@ import (
 
 	"github.com/darkrain/message-delivery/internal/config"
 	"github.com/darkrain/message-delivery/internal/delivery"
+	"github.com/darkrain/message-delivery/internal/provider"
 )
 
 const secretTokenHeader = "X-Telegram-Bot-Api-Secret-Token"
@@ -28,10 +29,11 @@ type WebhookHandler struct {
 	cfg       config.TelegramBotConfig
 	secret    string
 	publisher ConnectionPublisher
+	welcome   provider.Provider
 	logger    *log.Logger
 }
 
-func NewWebhookHandler(cfg config.TelegramBotConfig, secret string, publisher ConnectionPublisher, logger *log.Logger) (*WebhookHandler, error) {
+func NewWebhookHandler(cfg config.TelegramBotConfig, secret string, publisher ConnectionPublisher, welcome provider.Provider, logger *log.Logger) (*WebhookHandler, error) {
 	if !cfg.Enabled {
 		return nil, fmt.Errorf("telegram bot webhook is disabled")
 	}
@@ -42,10 +44,14 @@ func NewWebhookHandler(cfg config.TelegramBotConfig, secret string, publisher Co
 	if publisher == nil {
 		return nil, fmt.Errorf("telegram bot webhook publisher is required")
 	}
+	if welcome == nil {
+		return nil, fmt.Errorf("telegram bot webhook welcome sender is required")
+	}
 	if logger == nil {
 		logger = log.Default()
 	}
-	return &WebhookHandler{cfg: cfg, secret: secret, publisher: publisher, logger: logger}, nil
+	cfg.Presentation = cfg.Presentation.WithDefaults()
+	return &WebhookHandler{cfg: cfg, secret: secret, publisher: publisher, welcome: welcome, logger: logger}, nil
 }
 
 func (handler *WebhookHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -77,7 +83,25 @@ func (handler *WebhookHandler) ServeHTTP(writer http.ResponseWriter, request *ht
 		http.Error(writer, "service unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	handler.sendWelcome(request.Context(), event, update.Message.From.LanguageCode)
 	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (handler *WebhookHandler) sendWelcome(ctx context.Context, event delivery.TelegramConnectionRequestedEvent, locale string) {
+	welcomeContext, cancel := context.WithTimeout(ctx, time.Duration(handler.cfg.PublishTimeoutSec)*time.Second)
+	defer cancel()
+	result := handler.welcome.Send(welcomeContext, provider.Message{
+		EventID:       event.EventID + "-welcome",
+		RecipientType: delivery.RecipientTypeTelegram,
+		Recipient:     fmt.Sprintf("%d", event.ChatID),
+		Metadata: map[string]string{
+			"telegram_presentation": "welcome",
+			"locale":                locale,
+		},
+	})
+	if result.Status != provider.StatusSent {
+		handler.logger.Printf("telegram welcome update_id=%d status=%s error_code=%s", event.UpdateID, result.Status, result.ErrorCode)
+	}
 }
 
 type update struct {
@@ -90,8 +114,9 @@ type update struct {
 			Username string `json:"username"`
 		} `json:"chat"`
 		From struct {
-			ID       int64  `json:"id"`
-			Username string `json:"username"`
+			ID           int64  `json:"id"`
+			Username     string `json:"username"`
+			LanguageCode string `json:"language_code"`
 		} `json:"from"`
 	} `json:"message"`
 }

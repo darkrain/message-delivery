@@ -15,22 +15,22 @@ import (
 func NewRegistryFromConfig(cfg *config.Config) *provider.Registry {
 	registry := provider.NewRegistry()
 	for name, adapter := range cfg.Providers.Email.Adapters {
-		if p := buildProvider(name, adapter, deliveryRecipientEmail); p != nil {
+		if p := buildProvider(name, adapter, deliveryRecipientEmail, config.TelegramBotPresentation{}); p != nil {
 			registry.Register(p)
 		}
 	}
 	for name, adapter := range cfg.Providers.Phone.Adapters {
-		if p := buildProvider(name, adapter, deliveryRecipientPhone); p != nil {
+		if p := buildProvider(name, adapter, deliveryRecipientPhone, config.TelegramBotPresentation{}); p != nil {
 			registry.Register(p)
 		}
 	}
 	for name, adapter := range cfg.Providers.Push.Adapters {
-		if p := buildProvider(name, adapter, deliveryRecipientPush); p != nil {
+		if p := buildProvider(name, adapter, deliveryRecipientPush, config.TelegramBotPresentation{}); p != nil {
 			registry.Register(p)
 		}
 	}
 	for name, adapter := range cfg.Providers.Telegram.Adapters {
-		if p := buildProvider(name, adapter, deliveryRecipientTelegram); p != nil {
+		if p := buildProvider(name, adapter, deliveryRecipientTelegram, cfg.TelegramBot.Presentation); p != nil {
 			registry.Register(p)
 		}
 	}
@@ -44,7 +44,7 @@ const (
 	deliveryRecipientTelegram = "telegram"
 )
 
-func buildProvider(name string, adapter config.AdapterConfig, recipientType string) provider.Provider {
+func buildProvider(name string, adapter config.AdapterConfig, recipientType string, presentation config.TelegramBotPresentation) provider.Provider {
 	if !adapter.Bool("Enabled") {
 		return provider.NewUnavailable(name, "provider_disabled")
 	}
@@ -82,7 +82,7 @@ func buildProvider(name string, adapter config.AdapterConfig, recipientType stri
 			timeout(adapter, 10*time.Second),
 		)
 	case "telegram-bot":
-		return telegrambot.New(name, adapter.String("BaseURL"), adapter.EnvString("BotTokenEnv"), adapter.String("PublicBaseURL"), timeout(adapter, 10*time.Second))
+		return telegrambot.New(name, adapter.String("BaseURL"), adapter.EnvString("BotTokenEnv"), adapter.String("PublicBaseURL"), timeout(adapter, 10*time.Second), presentation)
 	case "":
 		if recipientType == deliveryRecipientPhone || recipientType == deliveryRecipientPush || recipientType == deliveryRecipientTelegram {
 			return provider.NewUnavailable(name, name+"_not_configured")

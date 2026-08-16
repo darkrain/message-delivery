@@ -292,22 +292,35 @@ The service never derives a subscription from a user identifier. A producer
 must persist the browser-created endpoint and keys and send one delivery event
 per subscription. It should disable the subscription after `undeliverable`.
 
-For `telegram-bot`, `recipient` is the private numeric chat ID. The optional
-metadata below overrides the rendered fallback values. `telegram_target_path`
-is appended only when `PublicBaseURL` is a valid HTTPS URL and the path starts
-with `/`.
+For `telegram-bot`, `recipient` is the private numeric chat ID. The provider
+renders safe Telegram HTML: an emoji, title, body, localized footer and an
+inline action button. Dynamic title/body values are HTML-escaped. The button
+is included only when `PublicBaseURL` is a valid HTTPS URL and
+`telegram_target_path` starts with `/`.
 
 | Event metadata | Telegram Bot payload |
 |---|---|
 | `telegram_title` | message title |
 | `telegram_body` | message body |
-| `telegram_target_path` | same-origin link below the message |
+| `telegram_target_path` | same-origin inline-button target |
+| `telegram_event_type` | event-specific heading, for example a chat sender |
+| `telegram_icon` | emoji selected for the notification type |
+| `telegram_priority` | critical notifications use an urgent emoji |
+| `locale` | localized Bot copy and action label |
 
 The bot webhook only accepts `POST /bot/webhook`, verifies
 `X-Telegram-Bot-Api-Secret-Token`, and accepts `/start <one-time-token>` from a
-private chat. It publishes `notification.telegram.connection.requested` to
-RabbitMQ; a producer-side consumer owns the user-to-chat binding. The service
-does not persist either that binding or the one-time token.
+private chat. It hashes the ticket before publishing
+`notification.telegram.connection.requested` to RabbitMQ, so the raw ticket
+is not stored in the queue. After accepting `/start`, the Bot sends a welcome
+message. A producer-side consumer owns the user-to-chat binding; the delivery
+service does not persist it.
+
+`TelegramBot.Presentation` holds deployment-specific copy: `WelcomeTitle`,
+`WelcomeBody`, `NotificationFallbackTitle`, `NotificationFooter` and
+`OpenActionLabel`. Each field is a locale-to-text map. Generic English/Russian
+defaults are supplied by the service, while projects should override them in
+their runtime config.
 
 ### Email HTML Templates
 
@@ -466,7 +479,13 @@ runtime environment:
     "Enabled": true,
     "WebhookPath": "/bot/webhook",
     "WebhookSecretEnv": "MESSAGE_DELIVERY_TELEGRAM_WEBHOOK_SECRET",
-    "ConnectionRoutingKey": "notification.telegram.connection.requested"
+    "ConnectionRoutingKey": "notification.telegram.connection.requested",
+    "Presentation": {
+      "WelcomeTitle": {"en": "Welcome", "ru": "Добро пожаловать"},
+      "WelcomeBody": {"en": "Notifications are connected.", "ru": "Уведомления подключены."},
+      "NotificationFooter": {"en": "Notifications", "ru": "Уведомления"},
+      "OpenActionLabel": {"en": "Open in app", "ru": "Открыть в приложении"}
+    }
   }
 }
 ```

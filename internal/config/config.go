@@ -45,12 +45,24 @@ type ProvidersConfig struct {
 }
 
 type TelegramBotConfig struct {
-	Enabled              bool   `json:"Enabled"`
-	WebhookPath          string `json:"WebhookPath"`
-	WebhookSecretEnv     string `json:"WebhookSecretEnv"`
-	ConnectionRoutingKey string `json:"ConnectionRoutingKey"`
-	MaxBodyBytes         int64  `json:"MaxBodyBytes"`
-	PublishTimeoutSec    int    `json:"PublishTimeoutSec"`
+	Enabled              bool                    `json:"Enabled"`
+	WebhookPath          string                  `json:"WebhookPath"`
+	WebhookSecretEnv     string                  `json:"WebhookSecretEnv"`
+	ConnectionRoutingKey string                  `json:"ConnectionRoutingKey"`
+	MaxBodyBytes         int64                   `json:"MaxBodyBytes"`
+	PublishTimeoutSec    int                     `json:"PublishTimeoutSec"`
+	Presentation         TelegramBotPresentation `json:"Presentation"`
+}
+
+// TelegramBotPresentation contains operator-owned copy for the Bot UI. The
+// delivery service stays domain-neutral while each deployment controls its
+// name, welcome text and action labels.
+type TelegramBotPresentation struct {
+	WelcomeTitle              map[string]string `json:"WelcomeTitle"`
+	WelcomeBody               map[string]string `json:"WelcomeBody"`
+	NotificationFallbackTitle map[string]string `json:"NotificationFallbackTitle"`
+	NotificationFooter        map[string]string `json:"NotificationFooter"`
+	OpenActionLabel           map[string]string `json:"OpenActionLabel"`
 }
 
 type ChannelConfig struct {
@@ -243,12 +255,53 @@ func (c *Config) setDefaults() {
 	if c.TelegramBot.PublishTimeoutSec <= 0 {
 		c.TelegramBot.PublishTimeoutSec = 5
 	}
+	c.TelegramBot.Presentation = c.TelegramBot.Presentation.WithDefaults()
 	if c.Templates.DefaultLocale == "" {
 		c.Templates.DefaultLocale = "en"
 	}
 	if c.Templates.Items == nil {
 		c.Templates.Items = map[string]TemplateConfig{}
 	}
+}
+
+// WithDefaults fills missing localized strings without replacing deployment
+// copy. The fallback remains generic so the message-delivery repository does
+// not encode a particular product or brand.
+func (presentation TelegramBotPresentation) WithDefaults() TelegramBotPresentation {
+	presentation.WelcomeTitle = mergeTelegramText(presentation.WelcomeTitle, map[string]string{
+		"en": "Telegram notifications connected",
+		"ru": "Telegram-уведомления подключены",
+	})
+	presentation.WelcomeBody = mergeTelegramText(presentation.WelcomeBody, map[string]string{
+		"en": "We will send important updates here. You can change notification settings in the app at any time.",
+		"ru": "Сюда будут приходить важные обновления. Настройки уведомлений можно изменить в приложении в любое время.",
+	})
+	presentation.NotificationFallbackTitle = mergeTelegramText(presentation.NotificationFallbackTitle, map[string]string{
+		"en": "New notification",
+		"ru": "Новое уведомление",
+	})
+	presentation.NotificationFooter = mergeTelegramText(presentation.NotificationFooter, map[string]string{
+		"en": "Notification delivery",
+		"ru": "Уведомления",
+	})
+	presentation.OpenActionLabel = mergeTelegramText(presentation.OpenActionLabel, map[string]string{
+		"en": "Open in app",
+		"ru": "Открыть в приложении",
+	})
+	return presentation
+}
+
+func mergeTelegramText(values, defaults map[string]string) map[string]string {
+	merged := make(map[string]string, len(defaults)+len(values))
+	for locale, value := range defaults {
+		merged[locale] = value
+	}
+	for locale, value := range values {
+		if value != "" {
+			merged[locale] = value
+		}
+	}
+	return merged
 }
 
 func (c *Config) resolvePaths(configPath string) {
@@ -309,6 +362,9 @@ func (c *Config) Validate() error {
 		}
 	}
 	if c.TelegramBot.Enabled {
+		if !c.Providers.Telegram.Enabled {
+			return errors.New("config: Providers.Telegram must be enabled when TelegramBot is enabled")
+		}
 		if c.TelegramBot.WebhookPath == "" || c.TelegramBot.WebhookPath[0] != '/' {
 			return errors.New("config: TelegramBot.WebhookPath must be an absolute path")
 		}

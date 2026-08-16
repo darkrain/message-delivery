@@ -97,7 +97,29 @@
     "WebhookSecretEnv": "MESSAGE_DELIVERY_TELEGRAM_WEBHOOK_SECRET",
     "ConnectionRoutingKey": "notification.telegram.connection.requested",
     "MaxBodyBytes": 1048576,
-    "PublishTimeoutSec": 5
+    "PublishTimeoutSec": 5,
+    "Presentation": {
+      "WelcomeTitle": {
+        "en": "Telegram notifications connected",
+        "ru": "Telegram-уведомления подключены"
+      },
+      "WelcomeBody": {
+        "en": "We will send important updates here. You can change notification settings in the app at any time.",
+        "ru": "Сюда будут приходить важные обновления. Настройки уведомлений можно изменить в приложении в любое время."
+      },
+      "NotificationFallbackTitle": {
+        "en": "New notification",
+        "ru": "Новое уведомление"
+      },
+      "NotificationFooter": {
+        "en": "Notification delivery",
+        "ru": "Уведомления"
+      },
+      "OpenActionLabel": {
+        "en": "Open in app",
+        "ru": "Открыть в приложении"
+      }
+    }
   },
   "Templates": {
     "DefaultLocale": "en",

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/darkrain/message-delivery/internal/config"
 	"github.com/darkrain/message-delivery/internal/provider"
 )
 
@@ -22,10 +24,11 @@ type Provider struct {
 	baseURL       string
 	botToken      string
 	publicBaseURL string
+	presentation  config.TelegramBotPresentation
 	httpClient    *http.Client
 }
 
-func New(name, baseURL, botToken, publicBaseURL string, timeout time.Duration) *Provider {
+func New(name, baseURL, botToken, publicBaseURL string, timeout time.Duration, presentation config.TelegramBotPresentation) *Provider {
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = defaultBaseURL
 	}
@@ -37,6 +40,7 @@ func New(name, baseURL, botToken, publicBaseURL string, timeout time.Duration) *
 		baseURL:       strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		botToken:      strings.TrimSpace(botToken),
 		publicBaseURL: strings.TrimRight(strings.TrimSpace(publicBaseURL), "/"),
+		presentation:  presentation.WithDefaults(),
 		httpClient:    &http.Client{Timeout: timeout},
 	}
 }
@@ -52,11 +56,14 @@ func (p *Provider) Send(ctx context.Context, message provider.Message) provider.
 		return provider.Result{Status: provider.StatusUndeliverable, ErrorCode: "telegram_bot_chat_invalid"}
 	}
 
+	text, replyMarkup := telegramMessage(message, p.publicBaseURL, p.presentation)
 	payload, err := json.Marshal(sendMessageRequest{
 		ChatID:                chatID,
-		Text:                  telegramText(message, p.publicBaseURL),
+		Text:                  text,
+		ParseMode:             "HTML",
 		DisableWebPagePreview: true,
 		LinkPreviewOptions:    &linkPreviewOptions{IsDisabled: true},
+		ReplyMarkup:           replyMarkup,
 	})
 	if err != nil {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "telegram_bot_payload_invalid"}
@@ -98,12 +105,23 @@ func (p *Provider) Send(ctx context.Context, message provider.Message) provider.
 type sendMessageRequest struct {
 	ChatID                int64               `json:"chat_id"`
 	Text                  string              `json:"text"`
+	ParseMode             string              `json:"parse_mode,omitempty"`
 	DisableWebPagePreview bool                `json:"disable_web_page_preview"`
 	LinkPreviewOptions    *linkPreviewOptions `json:"link_preview_options,omitempty"`
+	ReplyMarkup           *inlineKeyboard     `json:"reply_markup,omitempty"`
 }
 
 type linkPreviewOptions struct {
 	IsDisabled bool `json:"is_disabled"`
+}
+
+type inlineKeyboard struct {
+	InlineKeyboard [][]inlineKeyboardButton `json:"inline_keyboard"`
+}
+
+type inlineKeyboardButton struct {
+	Text string `json:"text"`
+	URL  string `json:"url"`
 }
 
 type botResponse struct {
@@ -111,20 +129,95 @@ type botResponse struct {
 	Description string `json:"description"`
 }
 
-func telegramText(message provider.Message, publicBaseURL string) string {
-	title := firstNonBlank(message.Metadata["telegram_title"], message.Subject)
+func telegramMessage(message provider.Message, publicBaseURL string, presentation config.TelegramBotPresentation) (string, *inlineKeyboard) {
+	presentation = presentation.WithDefaults()
+	locale := telegramLocale(message.Metadata["locale"])
+	if message.Metadata["telegram_presentation"] == "welcome" {
+		return telegramWelcomeText(message, locale, presentation), nil
+	}
+
+	title := firstNonBlank(message.Metadata["telegram_title"], message.Subject, localized(presentation.NotificationFallbackTitle, locale))
+	title = telegramNotificationTitle(title, message.Metadata["telegram_event_type"], locale)
 	body := firstNonBlank(message.Metadata["telegram_body"], message.Body)
-	parts := make([]string, 0, 3)
-	if title != "" {
-		parts = append(parts, title)
+	parts := []string{telegramNotificationEmoji(message.Metadata) + " <b>" + html.EscapeString(truncateRunes(title, 320)) + "</b>"}
+	if body = strings.TrimSpace(body); body != "" && body != title {
+		parts = append(parts, html.EscapeString(truncateRunes(body, 3000)))
 	}
-	if body != "" && body != title {
-		parts = append(parts, body)
+	if footer := localized(presentation.NotificationFooter, locale); footer != "" {
+		parts = append(parts, "<i>"+html.EscapeString(footer)+"</i>")
 	}
+
+	var replyMarkup *inlineKeyboard
 	if target := telegramTargetURL(publicBaseURL, message.Metadata["telegram_target_path"]); target != "" {
-		parts = append(parts, target)
+		replyMarkup = &inlineKeyboard{InlineKeyboard: [][]inlineKeyboardButton{{{
+			Text: localized(presentation.OpenActionLabel, locale), URL: target,
+		}}}}
 	}
-	return truncateRunes(strings.Join(parts, "\n\n"), 4096)
+	return strings.Join(parts, "\n\n"), replyMarkup
+}
+
+func telegramWelcomeText(message provider.Message, locale string, presentation config.TelegramBotPresentation) string {
+	title := firstNonBlank(message.Subject, localized(presentation.WelcomeTitle, locale))
+	body := firstNonBlank(message.Body, localized(presentation.WelcomeBody, locale))
+	parts := []string{"👋 <b>" + html.EscapeString(truncateRunes(title, 320)) + "</b>"}
+	if body = strings.TrimSpace(body); body != "" && body != title {
+		parts = append(parts, html.EscapeString(truncateRunes(body, 3000)))
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func telegramNotificationTitle(title, eventType, locale string) string {
+	if eventType != "chat_message_received" || title == "" {
+		return title
+	}
+	if locale == "ru" {
+		return "Новое сообщение от " + title
+	}
+	return "New message from " + title
+}
+
+func telegramNotificationEmoji(metadata map[string]string) string {
+	if metadata["telegram_priority"] == "critical" {
+		return "🚨"
+	}
+	switch metadata["telegram_icon"] {
+	case "chat":
+		return "💬"
+	case "card", "cash", "money":
+		return "💳"
+	case "pin", "map":
+		return "📍"
+	case "user", "profile":
+		return "👤"
+	case "flag":
+		return "🚩"
+	case "offer":
+		return "✨"
+	case "shield", "lock":
+		return "🛡️"
+	case "calendar":
+		return "📅"
+	default:
+		return "🔔"
+	}
+}
+
+func telegramLocale(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if index := strings.IndexByte(value, '-'); index >= 0 {
+		value = value[:index]
+	}
+	if value == "ru" {
+		return "ru"
+	}
+	return "en"
+}
+
+func localized(values map[string]string, locale string) string {
+	if value := strings.TrimSpace(values[locale]); value != "" {
+		return value
+	}
+	return strings.TrimSpace(values["en"])
 }
 
 func telegramTargetURL(publicBaseURL, targetPath string) string {
