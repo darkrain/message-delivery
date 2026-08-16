@@ -58,6 +58,21 @@
           "Status": "sent"
         }
       }
+    },
+    "Push": {
+      "Enabled": false,
+      "DefaultProvider": "webpush",
+      "AllowedProviders": ["webpush"],
+      "Adapters": {
+        "webpush": {
+          "Enabled": false,
+          "Kind": "webpush",
+          "TimeoutSec": 10,
+          "VAPIDPublicKeyEnv": "MESSAGE_DELIVERY_WEB_PUSH_VAPID_PUBLIC_KEY",
+          "VAPIDPrivateKeyEnv": "MESSAGE_DELIVERY_WEB_PUSH_VAPID_PRIVATE_KEY",
+          "VAPIDSubscriber": "mailto:notifications@example.com"
+        }
+      }
     }
   },
   "Templates": {

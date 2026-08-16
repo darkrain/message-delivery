@@ -13,6 +13,7 @@ const (
 
 	RecipientTypeEmail = "email"
 	RecipientTypePhone = "phone"
+	RecipientTypePush  = "push"
 
 	StatusSent          = "sent"
 	StatusFailed        = "failed"
@@ -79,7 +80,7 @@ func (e *RequestEvent) Validate() error {
 	if e.Template == "" {
 		return errors.New("delivery: template is required")
 	}
-	if e.RecipientType != RecipientTypeEmail && e.RecipientType != RecipientTypePhone {
+	if e.RecipientType != RecipientTypeEmail && e.RecipientType != RecipientTypePhone && e.RecipientType != RecipientTypePush {
 		return fmt.Errorf("delivery: unsupported recipient_type %q", e.RecipientType)
 	}
 	if e.Recipient == "" {

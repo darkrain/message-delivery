@@ -38,6 +38,7 @@ type BrokerRoutingKeys struct {
 type ProvidersConfig struct {
 	Email ChannelConfig `json:"Email"`
 	Phone PhoneConfig   `json:"Phone"`
+	Push  ChannelConfig `json:"Push"`
 }
 
 type ChannelConfig struct {
@@ -203,6 +204,12 @@ func (c *Config) setDefaults() {
 	if len(c.Providers.Phone.AllowedProviders) == 0 {
 		c.Providers.Phone.AllowedProviders = c.Providers.Phone.DefaultProviderChain
 	}
+	if c.Providers.Push.DefaultProvider == "" {
+		c.Providers.Push.DefaultProvider = "webpush"
+	}
+	if len(c.Providers.Push.AllowedProviders) == 0 {
+		c.Providers.Push.AllowedProviders = []string{c.Providers.Push.DefaultProvider}
+	}
 	if c.Templates.DefaultLocale == "" {
 		c.Templates.DefaultLocale = "en"
 	}
@@ -243,6 +250,9 @@ func (c *Config) Validate() error {
 	if len(c.Providers.Phone.DefaultProviderChain) == 0 {
 		return errors.New("config: Providers.Phone.DefaultProviderChain must not be empty")
 	}
+	if len(c.Providers.Push.AllowedProviders) == 0 {
+		return errors.New("config: Providers.Push.AllowedProviders must not be empty")
+	}
 	if len(c.Templates.Items) == 0 {
 		return errors.New("config: Templates.Items must not be empty")
 	}
@@ -266,6 +276,8 @@ func (c *Config) AllowedProvider(recipientType, provider string) bool {
 		allowed = c.Providers.Email.AllowedProviders
 	case "phone":
 		allowed = c.Providers.Phone.AllowedProviders
+	case "push":
+		allowed = c.Providers.Push.AllowedProviders
 	default:
 		return false
 	}
@@ -283,6 +295,8 @@ func (c *Config) DefaultProviderChain(recipientType string) []string {
 		return []string{c.Providers.Email.DefaultProvider}
 	case "phone":
 		return append([]string(nil), c.Providers.Phone.DefaultProviderChain...)
+	case "push":
+		return []string{c.Providers.Push.DefaultProvider}
 	default:
 		return nil
 	}

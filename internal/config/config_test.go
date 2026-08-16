@@ -26,6 +26,9 @@ func TestLoadExampleConfig(t *testing.T) {
 	if cfg.AllowedProvider("email", "telegram") {
 		t.Error("telegram should not be allowed for email")
 	}
+	if !cfg.AllowedProvider("push", "webpush") {
+		t.Error("webpush should be allowed for push")
+	}
 }
 
 func TestLoadTelegramExampleConfig(t *testing.T) {

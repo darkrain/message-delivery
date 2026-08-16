@@ -21,6 +21,11 @@ func TestNewRegistryFromConfigBuildsFakeProviders(t *testing.T) {
 					"telegram": {"Enabled": true, "Kind": "fake", "Status": "undeliverable"},
 				},
 			},
+			Push: config.ChannelConfig{
+				Adapters: map[string]config.AdapterConfig{
+					"fake-push": {"Enabled": true, "Kind": "fake", "Status": "sent"},
+				},
+			},
 		},
 	}
 
@@ -39,6 +44,14 @@ func TestNewRegistryFromConfigBuildsFakeProviders(t *testing.T) {
 	}
 	if result := telegramProvider.Send(context.Background(), provider.Message{}); result.Status != provider.StatusUndeliverable {
 		t.Fatalf("telegram result = %#v", result)
+	}
+
+	pushProvider, ok := registry.Get("fake-push")
+	if !ok {
+		t.Fatal("fake-push provider missing")
+	}
+	if result := pushProvider.Send(context.Background(), provider.Message{}); result.Status != provider.StatusSent {
+		t.Fatalf("push result = %#v", result)
 	}
 }
 
