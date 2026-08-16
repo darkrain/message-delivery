@@ -229,10 +229,11 @@ Implemented adapter kinds:
 
 | Kind | Channel | Status |
 |---|---|---|
-| `fake` | email, phone | Implemented. Used for deterministic local/integration tests. |
+| `fake` | email, phone, push, telegram | Implemented. Used for deterministic local/integration tests. |
 | `smtp` | email | Implemented. Sends rendered text or HTML email through SMTP using `gomail`. |
 | `telegram-gateway` | phone | Implemented. Sends Telegram Gateway verification messages. |
 | `webpush` | push | Implemented. Encrypts a browser payload and signs it with VAPID. HTTP `404`/`410` means the subscription is no longer deliverable. |
+| `telegram-bot` | telegram | Implemented. Sends a rendered notification to a connected private Bot API chat. HTTP `403` and known unavailable-chat responses disable the connection upstream. |
 
 The default example config uses fake providers for deterministic local tests:
 
@@ -257,6 +258,7 @@ Templates are a common input contract for producers, but not every provider can 
 | `fake` | yes | yes | no |
 | `telegram-gateway` | no | no | yes |
 | `webpush` | fallback | fallback | `push_*` metadata |
+| `telegram-bot` | fallback | fallback | `telegram_*` metadata |
 
 For `smtp` and future text-based providers, the service renders the configured template using `variables` and sends the rendered body.
 
@@ -289,6 +291,23 @@ browser payload is built from the following optional metadata, with rendered
 The service never derives a subscription from a user identifier. A producer
 must persist the browser-created endpoint and keys and send one delivery event
 per subscription. It should disable the subscription after `undeliverable`.
+
+For `telegram-bot`, `recipient` is the private numeric chat ID. The optional
+metadata below overrides the rendered fallback values. `telegram_target_path`
+is appended only when `PublicBaseURL` is a valid HTTPS URL and the path starts
+with `/`.
+
+| Event metadata | Telegram Bot payload |
+|---|---|
+| `telegram_title` | message title |
+| `telegram_body` | message body |
+| `telegram_target_path` | same-origin link below the message |
+
+The bot webhook only accepts `POST /bot/webhook`, verifies
+`X-Telegram-Bot-Api-Secret-Token`, and accepts `/start <one-time-token>` from a
+private chat. It publishes `notification.telegram.connection.requested` to
+RabbitMQ; a producer-side consumer owns the user-to-chat binding. The service
+does not persist either that binding or the one-time token.
 
 ### Email HTML Templates
 
@@ -402,6 +421,8 @@ Useful environment overrides:
 | `MESSAGE_DELIVERY_BROKER_PREFETCH` | Consumer prefetch count |
 | `RABBITMQ_PASSWORD` | Password used when `Broker.PasswordEnv` points to it |
 | `TELEGRAM_GATEWAY_API_TOKEN` | Telegram Gateway adapter token |
+| `MESSAGE_DELIVERY_TELEGRAM_BOT_TOKEN` | Bot API token for the `telegram-bot` adapter and webhook registration |
+| `MESSAGE_DELIVERY_TELEGRAM_WEBHOOK_SECRET` | Secret expected in Telegram webhook requests |
 | `MESSAGE_DELIVERY_WEB_PUSH_VAPID_PUBLIC_KEY` | Public VAPID key for the `webpush` adapter |
 | `MESSAGE_DELIVERY_WEB_PUSH_VAPID_PRIVATE_KEY` | Private VAPID key for the `webpush` adapter |
 | `SMTP_USERNAME` | SMTP account username for the `smtp` email adapter |
@@ -420,6 +441,39 @@ For local tests, `message-delivery.example.json` uses fake phone providers. To s
 ```
 
 The token must be exported in the runtime environment, not committed to the config file.
+
+To enable Bot API notifications, configure both the outgoing `Telegram` adapter
+and the incoming `TelegramBot` webhook section. Keep both secrets in the
+runtime environment:
+
+```json
+{
+  "Telegram": {
+    "Enabled": true,
+    "DefaultProvider": "telegram-bot",
+    "AllowedProviders": ["telegram-bot"],
+    "Adapters": {
+      "telegram-bot": {
+        "Enabled": true,
+        "Kind": "telegram-bot",
+        "BaseURL": "https://api.telegram.org",
+        "BotTokenEnv": "MESSAGE_DELIVERY_TELEGRAM_BOT_TOKEN",
+        "PublicBaseURL": "https://app.example.com"
+      }
+    }
+  },
+  "TelegramBot": {
+    "Enabled": true,
+    "WebhookPath": "/bot/webhook",
+    "WebhookSecretEnv": "MESSAGE_DELIVERY_TELEGRAM_WEBHOOK_SECRET",
+    "ConnectionRoutingKey": "notification.telegram.connection.requested"
+  }
+}
+```
+
+Register `https://<public-host>/bot/webhook` with Bot API `setWebhook`, passing
+the same secret as `secret_token`. Do not expose the service port directly;
+place it behind TLS nginx or an equivalent proxy.
 
 For real SMTP delivery, use `message-delivery.smtp.example.json` or configure an adapter with:
 

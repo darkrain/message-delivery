@@ -8,12 +8,14 @@ import (
 )
 
 const (
-	EventTypeDeliveryRequested = "message.delivery.requested"
-	EventTypeDeliveryResult    = "message.delivery.result"
+	EventTypeDeliveryRequested           = "message.delivery.requested"
+	EventTypeDeliveryResult              = "message.delivery.result"
+	EventTypeTelegramConnectionRequested = "notification.telegram.connection.requested"
 
-	RecipientTypeEmail = "email"
-	RecipientTypePhone = "phone"
-	RecipientTypePush  = "push"
+	RecipientTypeEmail    = "email"
+	RecipientTypePhone    = "phone"
+	RecipientTypePush     = "push"
+	RecipientTypeTelegram = "telegram"
 
 	StatusSent          = "sent"
 	StatusFailed        = "failed"
@@ -80,11 +82,39 @@ func (e *RequestEvent) Validate() error {
 	if e.Template == "" {
 		return errors.New("delivery: template is required")
 	}
-	if e.RecipientType != RecipientTypeEmail && e.RecipientType != RecipientTypePhone && e.RecipientType != RecipientTypePush {
+	if e.RecipientType != RecipientTypeEmail && e.RecipientType != RecipientTypePhone && e.RecipientType != RecipientTypePush && e.RecipientType != RecipientTypeTelegram {
 		return fmt.Errorf("delivery: unsupported recipient_type %q", e.RecipientType)
 	}
 	if e.Recipient == "" {
 		return errors.New("delivery: recipient is required")
+	}
+	return nil
+}
+
+// TelegramConnectionRequestedEvent is emitted by the webhook after a user
+// starts the bot. The API hashes StartToken before comparing it to the stored
+// one-time connection ticket, so the raw value is never persisted.
+type TelegramConnectionRequestedEvent struct {
+	Version      string    `json:"version"`
+	EventID      string    `json:"event_id"`
+	Type         string    `json:"type"`
+	Source       string    `json:"source"`
+	UpdateID     int64     `json:"update_id"`
+	ChatID       int64     `json:"chat_id"`
+	ChatUsername string    `json:"chat_username,omitempty"`
+	StartToken   string    `json:"start_token"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (e TelegramConnectionRequestedEvent) Validate() error {
+	if e.Version == "" || e.EventID == "" || e.Source == "" {
+		return errors.New("telegram connection event identity is required")
+	}
+	if e.Type != EventTypeTelegramConnectionRequested {
+		return fmt.Errorf("telegram connection event has unsupported type %q", e.Type)
+	}
+	if e.UpdateID <= 0 || e.ChatID <= 0 || e.StartToken == "" {
+		return errors.New("telegram connection event payload is invalid")
 	}
 	return nil
 }

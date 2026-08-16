@@ -76,6 +76,29 @@ func TestLoadSMTPExampleConfig(t *testing.T) {
 	}
 }
 
+func TestValidateTelegramBotRequiresConfiguredToken(t *testing.T) {
+	cfg, err := Load("../../message-delivery.example.json")
+	if err != nil {
+		t.Fatalf("Load example config: %v", err)
+	}
+	cfg.Providers.Telegram.Enabled = true
+	cfg.Providers.Telegram.DefaultProvider = "telegram-bot"
+	cfg.Providers.Telegram.AllowedProviders = []string{"telegram-bot"}
+	cfg.Providers.Telegram.Adapters["telegram-bot"] = AdapterConfig{
+		"Enabled":     true,
+		"Kind":        "telegram-bot",
+		"BotTokenEnv": "MESSAGE_DELIVERY_TELEGRAM_BOT_TOKEN",
+	}
+
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "bot token") {
+		t.Fatalf("Validate() error = %v, want missing bot token", err)
+	}
+	t.Setenv("MESSAGE_DELIVERY_TELEGRAM_BOT_TOKEN", "test-token")
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() with token: %v", err)
+	}
+}
+
 func TestLoadEnvOverridesBroker(t *testing.T) {
 	t.Setenv("MESSAGE_DELIVERY_BROKER_HOST", "rabbitmq:5672")
 	t.Setenv("MESSAGE_DELIVERY_BROKER_PASSWORD", "secret")

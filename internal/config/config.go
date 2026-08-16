@@ -11,11 +11,12 @@ import (
 )
 
 type Config struct {
-	Host      string          `json:"Host"`
-	Port      string          `json:"Port"`
-	Broker    BrokerConfig    `json:"Broker"`
-	Providers ProvidersConfig `json:"Providers"`
-	Templates TemplatesConfig `json:"Templates"`
+	Host        string            `json:"Host"`
+	Port        string            `json:"Port"`
+	Broker      BrokerConfig      `json:"Broker"`
+	Providers   ProvidersConfig   `json:"Providers"`
+	TelegramBot TelegramBotConfig `json:"TelegramBot"`
+	Templates   TemplatesConfig   `json:"Templates"`
 }
 
 type BrokerConfig struct {
@@ -31,14 +32,25 @@ type BrokerConfig struct {
 }
 
 type BrokerRoutingKeys struct {
-	DeliveryRequested string `json:"DeliveryRequested"`
-	DeliveryResult    string `json:"DeliveryResult"`
+	DeliveryRequested           string `json:"DeliveryRequested"`
+	DeliveryResult              string `json:"DeliveryResult"`
+	TelegramConnectionRequested string `json:"TelegramConnectionRequested"`
 }
 
 type ProvidersConfig struct {
-	Email ChannelConfig `json:"Email"`
-	Phone PhoneConfig   `json:"Phone"`
-	Push  ChannelConfig `json:"Push"`
+	Email    ChannelConfig `json:"Email"`
+	Phone    PhoneConfig   `json:"Phone"`
+	Push     ChannelConfig `json:"Push"`
+	Telegram ChannelConfig `json:"Telegram"`
+}
+
+type TelegramBotConfig struct {
+	Enabled              bool   `json:"Enabled"`
+	WebhookPath          string `json:"WebhookPath"`
+	WebhookSecretEnv     string `json:"WebhookSecretEnv"`
+	ConnectionRoutingKey string `json:"ConnectionRoutingKey"`
+	MaxBodyBytes         int64  `json:"MaxBodyBytes"`
+	PublishTimeoutSec    int    `json:"PublishTimeoutSec"`
 }
 
 type ChannelConfig struct {
@@ -192,6 +204,9 @@ func (c *Config) setDefaults() {
 	if c.Broker.RoutingKeys.DeliveryResult == "" {
 		c.Broker.RoutingKeys.DeliveryResult = "message.delivery.result"
 	}
+	if c.Broker.RoutingKeys.TelegramConnectionRequested == "" {
+		c.Broker.RoutingKeys.TelegramConnectionRequested = "notification.telegram.connection.requested"
+	}
 	if c.Providers.Email.DefaultProvider == "" {
 		c.Providers.Email.DefaultProvider = "fake-email"
 	}
@@ -209,6 +224,24 @@ func (c *Config) setDefaults() {
 	}
 	if len(c.Providers.Push.AllowedProviders) == 0 {
 		c.Providers.Push.AllowedProviders = []string{c.Providers.Push.DefaultProvider}
+	}
+	if c.Providers.Telegram.Enabled && c.Providers.Telegram.DefaultProvider == "" {
+		c.Providers.Telegram.DefaultProvider = "telegram-bot"
+	}
+	if c.Providers.Telegram.Enabled && len(c.Providers.Telegram.AllowedProviders) == 0 {
+		c.Providers.Telegram.AllowedProviders = []string{c.Providers.Telegram.DefaultProvider}
+	}
+	if c.TelegramBot.WebhookPath == "" {
+		c.TelegramBot.WebhookPath = "/bot/webhook"
+	}
+	if c.TelegramBot.ConnectionRoutingKey == "" {
+		c.TelegramBot.ConnectionRoutingKey = c.Broker.RoutingKeys.TelegramConnectionRequested
+	}
+	if c.TelegramBot.MaxBodyBytes <= 0 {
+		c.TelegramBot.MaxBodyBytes = 1 << 20
+	}
+	if c.TelegramBot.PublishTimeoutSec <= 0 {
+		c.TelegramBot.PublishTimeoutSec = 5
 	}
 	if c.Templates.DefaultLocale == "" {
 		c.Templates.DefaultLocale = "en"
@@ -241,6 +274,9 @@ func (c *Config) Validate() error {
 	if c.Broker.RoutingKeys.DeliveryResult == "" {
 		return errors.New("config: Broker.RoutingKeys.DeliveryResult must not be empty")
 	}
+	if c.Broker.RoutingKeys.TelegramConnectionRequested == "" {
+		return errors.New("config: Broker.RoutingKeys.TelegramConnectionRequested must not be empty")
+	}
 	if len(c.Providers.Email.AllowedProviders) == 0 {
 		return errors.New("config: Providers.Email.AllowedProviders must not be empty")
 	}
@@ -252,6 +288,36 @@ func (c *Config) Validate() error {
 	}
 	if len(c.Providers.Push.AllowedProviders) == 0 {
 		return errors.New("config: Providers.Push.AllowedProviders must not be empty")
+	}
+	if c.Providers.Telegram.Enabled && len(c.Providers.Telegram.AllowedProviders) == 0 {
+		return errors.New("config: Providers.Telegram.AllowedProviders must not be empty when Telegram is enabled")
+	}
+	if c.Providers.Telegram.Enabled {
+		providerName := c.Providers.Telegram.DefaultProvider
+		if providerName == "" {
+			return errors.New("config: Providers.Telegram.DefaultProvider must not be empty when Telegram is enabled")
+		}
+		adapter, exists := c.Providers.Telegram.Adapters[providerName]
+		if !exists || !adapter.Bool("Enabled") {
+			return fmt.Errorf("config: Providers.Telegram adapter %q must be enabled", providerName)
+		}
+		if adapter.String("Kind") == "telegram-bot" {
+			tokenEnv := adapter.String("BotTokenEnv")
+			if tokenEnv == "" || os.Getenv(tokenEnv) == "" {
+				return fmt.Errorf("config: Providers.Telegram adapter %q must reference a configured bot token", providerName)
+			}
+		}
+	}
+	if c.TelegramBot.Enabled {
+		if c.TelegramBot.WebhookPath == "" || c.TelegramBot.WebhookPath[0] != '/' {
+			return errors.New("config: TelegramBot.WebhookPath must be an absolute path")
+		}
+		if c.TelegramBot.WebhookSecretEnv == "" || os.Getenv(c.TelegramBot.WebhookSecretEnv) == "" {
+			return errors.New("config: TelegramBot.WebhookSecretEnv must reference a configured secret")
+		}
+		if c.TelegramBot.ConnectionRoutingKey == "" {
+			return errors.New("config: TelegramBot.ConnectionRoutingKey must not be empty")
+		}
 	}
 	if len(c.Templates.Items) == 0 {
 		return errors.New("config: Templates.Items must not be empty")
@@ -278,6 +344,8 @@ func (c *Config) AllowedProvider(recipientType, provider string) bool {
 		allowed = c.Providers.Phone.AllowedProviders
 	case "push":
 		allowed = c.Providers.Push.AllowedProviders
+	case "telegram":
+		allowed = c.Providers.Telegram.AllowedProviders
 	default:
 		return false
 	}
@@ -297,6 +365,8 @@ func (c *Config) DefaultProviderChain(recipientType string) []string {
 		return append([]string(nil), c.Providers.Phone.DefaultProviderChain...)
 	case "push":
 		return []string{c.Providers.Push.DefaultProvider}
+	case "telegram":
+		return []string{c.Providers.Telegram.DefaultProvider}
 	default:
 		return nil
 	}

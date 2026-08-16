@@ -172,6 +172,10 @@ func (b *Broker) PublishResult(ctx context.Context, event delivery.ResultEvent) 
 	return b.publish(ctx, b.cfg.RoutingKeys.DeliveryResult, event)
 }
 
+func (b *Broker) PublishTelegramConnection(ctx context.Context, event delivery.TelegramConnectionRequestedEvent) error {
+	return b.publish(ctx, b.cfg.RoutingKeys.TelegramConnectionRequested, event)
+}
+
 func (b *Broker) publish(ctx context.Context, routingKey string, event any) error {
 	payload, err := json.Marshal(event)
 	if err != nil {

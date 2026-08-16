@@ -8,6 +8,7 @@ import (
 	"github.com/darkrain/message-delivery/internal/provider/email"
 	"github.com/darkrain/message-delivery/internal/provider/fake"
 	"github.com/darkrain/message-delivery/internal/provider/telegram"
+	telegrambot "github.com/darkrain/message-delivery/internal/provider/telegrambot"
 	"github.com/darkrain/message-delivery/internal/provider/webpush"
 )
 
@@ -28,13 +29,19 @@ func NewRegistryFromConfig(cfg *config.Config) *provider.Registry {
 			registry.Register(p)
 		}
 	}
+	for name, adapter := range cfg.Providers.Telegram.Adapters {
+		if p := buildProvider(name, adapter, deliveryRecipientTelegram); p != nil {
+			registry.Register(p)
+		}
+	}
 	return registry
 }
 
 const (
-	deliveryRecipientEmail = "email"
-	deliveryRecipientPhone = "phone"
-	deliveryRecipientPush  = "push"
+	deliveryRecipientEmail    = "email"
+	deliveryRecipientPhone    = "phone"
+	deliveryRecipientPush     = "push"
+	deliveryRecipientTelegram = "telegram"
 )
 
 func buildProvider(name string, adapter config.AdapterConfig, recipientType string) provider.Provider {
@@ -74,8 +81,10 @@ func buildProvider(name string, adapter config.AdapterConfig, recipientType stri
 			adapter.String("VAPIDSubscriber"),
 			timeout(adapter, 10*time.Second),
 		)
+	case "telegram-bot":
+		return telegrambot.New(name, adapter.String("BaseURL"), adapter.EnvString("BotTokenEnv"), adapter.String("PublicBaseURL"), timeout(adapter, 10*time.Second))
 	case "":
-		if recipientType == deliveryRecipientPhone || recipientType == deliveryRecipientPush {
+		if recipientType == deliveryRecipientPhone || recipientType == deliveryRecipientPush || recipientType == deliveryRecipientTelegram {
 			return provider.NewUnavailable(name, name+"_not_configured")
 		}
 		return provider.NewUnavailable(name, "provider_not_configured")

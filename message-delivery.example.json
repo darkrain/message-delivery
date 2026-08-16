@@ -12,7 +12,8 @@
     "PrefetchCount": 8,
     "RoutingKeys": {
       "DeliveryRequested": "message.delivery.requested",
-      "DeliveryResult": "message.delivery.result"
+      "DeliveryResult": "message.delivery.result",
+      "TelegramConnectionRequested": "notification.telegram.connection.requested"
     }
   },
   "Providers": {
@@ -73,7 +74,30 @@
           "VAPIDSubscriber": "mailto:notifications@example.com"
         }
       }
+    },
+    "Telegram": {
+      "Enabled": false,
+      "DefaultProvider": "telegram-bot",
+      "AllowedProviders": ["telegram-bot"],
+      "Adapters": {
+        "telegram-bot": {
+          "Enabled": false,
+          "Kind": "telegram-bot",
+          "BaseURL": "https://api.telegram.org",
+          "TimeoutSec": 10,
+          "BotTokenEnv": "MESSAGE_DELIVERY_TELEGRAM_BOT_TOKEN",
+          "PublicBaseURL": "https://app.example.com"
+        }
+      }
     }
+  },
+  "TelegramBot": {
+    "Enabled": false,
+    "WebhookPath": "/bot/webhook",
+    "WebhookSecretEnv": "MESSAGE_DELIVERY_TELEGRAM_WEBHOOK_SECRET",
+    "ConnectionRoutingKey": "notification.telegram.connection.requested",
+    "MaxBodyBytes": 1048576,
+    "PublishTimeoutSec": 5
   },
   "Templates": {
     "DefaultLocale": "en",
