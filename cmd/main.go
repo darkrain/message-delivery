@@ -16,6 +16,7 @@ import (
 	"github.com/darkrain/message-delivery/internal/config"
 	"github.com/darkrain/message-delivery/internal/delivery"
 	"github.com/darkrain/message-delivery/internal/provider/factory"
+	telegrambot "github.com/darkrain/message-delivery/internal/telegrambot"
 	templater "github.com/darkrain/message-delivery/internal/template"
 	"github.com/darkrain/message-delivery/internal/worker"
 )
@@ -63,9 +64,22 @@ func main() {
 		delivery.NewMemoryIdempotencyStore(),
 	)
 
+	handler := healthHandler(Version)
+	if cfg.TelegramBot.Enabled {
+		welcomeSender, ok := registry.Get(cfg.Providers.Telegram.DefaultProvider)
+		if !ok {
+			logger.Fatalf("failed to find Telegram Bot provider %q", cfg.Providers.Telegram.DefaultProvider)
+		}
+		webhook, err := telegrambot.NewWebhookHandler(cfg.TelegramBot, os.Getenv(cfg.TelegramBot.WebhookSecretEnv), b, welcomeSender, logger)
+		if err != nil {
+			logger.Fatalf("failed to create Telegram Bot webhook: %v", err)
+		}
+		handler = withTelegramWebhook(handler, cfg.TelegramBot.WebhookPath, webhook)
+	}
+
 	srv := &http.Server{
 		Addr:              fmt.Sprintf("%s:%s", cfg.Host, cfg.Port),
-		Handler:           healthHandler(Version),
+		Handler:           handler,
 		ReadHeaderTimeout: 3 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      5 * time.Second,
@@ -89,6 +103,13 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Printf("http shutdown error: %v", err)
 	}
+}
+
+func withTelegramWebhook(base http.Handler, path string, webhook http.Handler) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/", base)
+	mux.Handle(path, webhook)
+	return mux
 }
 
 func healthHandler(version string) http.Handler {

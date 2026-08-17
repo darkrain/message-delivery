@@ -12,7 +12,8 @@
     "PrefetchCount": 8,
     "RoutingKeys": {
       "DeliveryRequested": "message.delivery.requested",
-      "DeliveryResult": "message.delivery.result"
+      "DeliveryResult": "message.delivery.result",
+      "TelegramConnectionRequested": "notification.telegram.connection.requested"
     }
   },
   "Providers": {
@@ -58,6 +59,66 @@
           "Status": "sent"
         }
       }
+    },
+    "Push": {
+      "Enabled": false,
+      "DefaultProvider": "webpush",
+      "AllowedProviders": ["webpush"],
+      "Adapters": {
+        "webpush": {
+          "Enabled": false,
+          "Kind": "webpush",
+          "TimeoutSec": 10,
+          "VAPIDPublicKeyEnv": "MESSAGE_DELIVERY_WEB_PUSH_VAPID_PUBLIC_KEY",
+          "VAPIDPrivateKeyEnv": "MESSAGE_DELIVERY_WEB_PUSH_VAPID_PRIVATE_KEY",
+          "VAPIDSubscriber": "mailto:notifications@example.com"
+        }
+      }
+    },
+    "Telegram": {
+      "Enabled": false,
+      "DefaultProvider": "telegram-bot",
+      "AllowedProviders": ["telegram-bot"],
+      "Adapters": {
+        "telegram-bot": {
+          "Enabled": false,
+          "Kind": "telegram-bot",
+          "BaseURL": "https://api.telegram.org",
+          "TimeoutSec": 10,
+          "BotTokenEnv": "MESSAGE_DELIVERY_TELEGRAM_BOT_TOKEN",
+          "PublicBaseURL": "https://app.example.com"
+        }
+      }
+    }
+  },
+  "TelegramBot": {
+    "Enabled": false,
+    "WebhookPath": "/bot/webhook",
+    "WebhookSecretEnv": "MESSAGE_DELIVERY_TELEGRAM_WEBHOOK_SECRET",
+    "ConnectionRoutingKey": "notification.telegram.connection.requested",
+    "MaxBodyBytes": 1048576,
+    "PublishTimeoutSec": 5,
+    "Presentation": {
+      "WelcomeTitle": {
+        "en": "Telegram notifications connected",
+        "ru": "Telegram-уведомления подключены"
+      },
+      "WelcomeBody": {
+        "en": "We will send important updates here. You can change notification settings in the app at any time.",
+        "ru": "Сюда будут приходить важные обновления. Настройки уведомлений можно изменить в приложении в любое время."
+      },
+      "NotificationFallbackTitle": {
+        "en": "New notification",
+        "ru": "Новое уведомление"
+      },
+      "NotificationFooter": {
+        "en": "Notification delivery",
+        "ru": "Уведомления"
+      },
+      "OpenActionLabel": {
+        "en": "Open in app",
+        "ru": "Открыть в приложении"
+      }
     }
   },
   "Templates": {
@@ -93,6 +154,21 @@
           "ru": "email/auth_password_reset.ru.html"
         },
         "RequiredVariables": ["code", "ttl_sec"]
+      },
+      "chat_message_notification": {
+        "Subject": {
+          "en": "New message from {{sender}}",
+          "ru": "Новое сообщение от {{sender}}"
+        },
+        "TextBody": {
+          "en": "{{message}}",
+          "ru": "{{message}}"
+        },
+        "HtmlBodyFile": {
+          "en": "email/chat_message_notification.en.html",
+          "ru": "email/chat_message_notification.ru.html"
+        },
+        "RequiredVariables": ["sender", "message", "chat_id"]
       }
     }
   }

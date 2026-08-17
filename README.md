@@ -1,6 +1,6 @@
 # message-delivery
 
-Generic message delivery worker for email and phone messages.
+Generic message delivery worker for email, phone and browser Web Push messages.
 
 The service consumes `message.delivery.requested` events, renders templates, chooses a provider plan, sends the message through a provider adapter, and publishes `message.delivery.result`.
 
@@ -10,12 +10,13 @@ It is intentionally not tied to any product domain. Producers such as `auth-serv
 
 - RabbitMQ consumer and result publisher
 - Generic delivery request/result event contract
-- Email and phone recipient types
+- Email, phone and browser Web Push recipient types
 - Provider fallback chain
 - User-selected provider support
 - In-memory idempotency for local/test runs
 - Template rendering with locale fallback
 - File-based HTML email templates with text fallback
+- Reusable `chat_message_notification` HTML template for chat delivery
 - Fake providers for local and integration tests
 - Health endpoint
 - Makefile, systemd unit, Dockerfile, `.deb` packaging
@@ -69,11 +70,13 @@ flowchart LR
 
     F -->|email| G[smtp / fake email]
     F -->|phone| H[telegram-gateway]
+	F -->|push| L[webpush / VAPID]
     H -->|undeliverable| I[sms adapter<br/>future real provider]
 
     G --> J[(RabbitMQ result<br/>message.delivery.result)]
     H --> J
     I --> J
+	L --> J
 
     D1 --> K[(in-memory idempotency<br/>per process)]
     D2 --> K
@@ -117,6 +120,51 @@ Configuration is split into:
 - env overrides for deployment-specific broker/port settings.
 
 This repository contains the service artifact and local/test runtime. Kubernetes or production infrastructure manifests should live in a separate deploy repository.
+
+For a systemd installation, `make install` creates the dedicated
+`message-delivery` system user, installs the unit and reads deployment secrets
+from the optional `/etc/message-delivery/message-delivery.env`. For example:
+
+```dotenv
+RABBITMQ_PASSWORD=replace-with-a-secret
+SMTP_USERNAME=no-reply@example.com
+SMTP_PASSWORD=replace-with-a-secret
+```
+
+The tracked JSON configuration must refer to those variables through
+`PasswordEnv` and provider-specific `*Env` fields; credentials do not belong in
+the repository or the JSON config.
+
+### Chat message notification template
+
+`chat_message_notification` is the implemented HTML email template for an
+asynchronous copy of an incoming chat message. It requires `sender`, `message`
+and `chat_id`; the last value is delivery metadata and is deliberately not
+interpreted by this service.
+
+```json
+{
+  "version": "1.0",
+  "event_id": "chat-message-notification-42",
+  "type": "message.delivery.requested",
+  "source": "api.notifications",
+  "template": "chat_message_notification",
+  "purpose": "notification",
+  "recipient_type": "email",
+  "recipient": "user@example.com",
+  "variables": {
+    "sender": "Anna",
+    "message": "Hello",
+    "chat_id": "71"
+  },
+  "delivery": { "allow_fallback": true },
+  "metadata": { "locale": "en" }
+}
+```
+
+The configuration example ships English and Russian file templates in
+`templates/email/chat_message_notification.*.html`. SMTP treats all variables as
+untrusted HTML and escapes them before rendering.
 
 ## Event Contract
 
@@ -181,9 +229,11 @@ Implemented adapter kinds:
 
 | Kind | Channel | Status |
 |---|---|---|
-| `fake` | email, phone | Implemented. Used for deterministic local/integration tests. |
+| `fake` | email, phone, push, telegram | Implemented. Used for deterministic local/integration tests. |
 | `smtp` | email | Implemented. Sends rendered text or HTML email through SMTP using `gomail`. |
 | `telegram-gateway` | phone | Implemented. Sends Telegram Gateway verification messages. |
+| `webpush` | push | Implemented. Encrypts a browser payload and signs it with VAPID. HTTP `404`/`410` means the subscription is no longer deliverable. |
+| `telegram-bot` | telegram | Implemented. Sends a rendered notification to a connected private Bot API chat. HTTP `403` and known unavailable-chat responses disable the connection upstream. |
 
 The default example config uses fake providers for deterministic local tests:
 
@@ -207,6 +257,8 @@ Templates are a common input contract for producers, but not every provider can 
 | `smtp` | yes | yes | no |
 | `fake` | yes | yes | no |
 | `telegram-gateway` | no | no | yes |
+| `webpush` | fallback | fallback | `push_*` metadata |
+| `telegram-bot` | fallback | fallback | `telegram_*` metadata |
 
 For `smtp` and future text-based providers, the service renders the configured template using `variables` and sends the rendered body.
 
@@ -222,6 +274,53 @@ For `telegram-gateway`, Telegram controls the verification message text. The ada
 | `metadata.telegram_callback_url` | `callback_url` |
 
 That means producers should still publish `template=auth_verification_code`, but they must not expect Telegram Gateway to display the configured template text. The code shown to the user is the value from `variables.code`, or a Telegram-generated code if a future adapter mode omits `code`.
+
+For `webpush`, the renderer still validates the declared template. The final
+browser payload is built from the following optional metadata, with rendered
+`subject`/`body` used as fallbacks:
+
+| Event metadata | Browser payload field |
+|---|---|
+| `push_p256dh` | subscription encryption public key, required |
+| `push_auth` | subscription auth secret, required |
+| `push_title` | notification title |
+| `push_body` | notification body |
+| `push_target_path` | same-origin path opened after click |
+| `push_tag` | browser notification tag |
+
+The service never derives a subscription from a user identifier. A producer
+must persist the browser-created endpoint and keys and send one delivery event
+per subscription. It should disable the subscription after `undeliverable`.
+
+For `telegram-bot`, `recipient` is the private numeric chat ID. The provider
+renders safe Telegram HTML: an emoji, title, body, localized footer and an
+inline action button. Dynamic title/body values are HTML-escaped. The button
+is included only when `PublicBaseURL` is a valid HTTPS URL and
+`telegram_target_path` starts with `/`.
+
+| Event metadata | Telegram Bot payload |
+|---|---|
+| `telegram_title` | message title |
+| `telegram_body` | message body |
+| `telegram_target_path` | same-origin inline-button target |
+| `telegram_event_type` | event-specific heading, for example a chat sender |
+| `telegram_icon` | emoji selected for the notification type |
+| `telegram_priority` | critical notifications use an urgent emoji |
+| `locale` | localized Bot copy and action label |
+
+The bot webhook only accepts `POST /bot/webhook`, verifies
+`X-Telegram-Bot-Api-Secret-Token`, and accepts `/start <one-time-token>` from a
+private chat. It hashes the ticket before publishing
+`notification.telegram.connection.requested` to RabbitMQ, so the raw ticket
+is not stored in the queue. After accepting `/start`, the Bot sends a welcome
+message. A producer-side consumer owns the user-to-chat binding; the delivery
+service does not persist it.
+
+`TelegramBot.Presentation` holds deployment-specific copy: `WelcomeTitle`,
+`WelcomeBody`, `NotificationFallbackTitle`, `NotificationFooter` and
+`OpenActionLabel`. Each field is a locale-to-text map. Generic English/Russian
+defaults are supplied by the service, while projects should override them in
+their runtime config.
 
 ### Email HTML Templates
 
@@ -335,6 +434,10 @@ Useful environment overrides:
 | `MESSAGE_DELIVERY_BROKER_PREFETCH` | Consumer prefetch count |
 | `RABBITMQ_PASSWORD` | Password used when `Broker.PasswordEnv` points to it |
 | `TELEGRAM_GATEWAY_API_TOKEN` | Telegram Gateway adapter token |
+| `MESSAGE_DELIVERY_TELEGRAM_BOT_TOKEN` | Bot API token for the `telegram-bot` adapter and webhook registration |
+| `MESSAGE_DELIVERY_TELEGRAM_WEBHOOK_SECRET` | Secret expected in Telegram webhook requests |
+| `MESSAGE_DELIVERY_WEB_PUSH_VAPID_PUBLIC_KEY` | Public VAPID key for the `webpush` adapter |
+| `MESSAGE_DELIVERY_WEB_PUSH_VAPID_PRIVATE_KEY` | Private VAPID key for the `webpush` adapter |
 | `SMTP_USERNAME` | SMTP account username for the `smtp` email adapter |
 | `SMTP_PASSWORD` | SMTP account password or app password for the `smtp` email adapter |
 | `SMTP_FROM` | SMTP sender address |
@@ -351,6 +454,45 @@ For local tests, `message-delivery.example.json` uses fake phone providers. To s
 ```
 
 The token must be exported in the runtime environment, not committed to the config file.
+
+To enable Bot API notifications, configure both the outgoing `Telegram` adapter
+and the incoming `TelegramBot` webhook section. Keep both secrets in the
+runtime environment:
+
+```json
+{
+  "Telegram": {
+    "Enabled": true,
+    "DefaultProvider": "telegram-bot",
+    "AllowedProviders": ["telegram-bot"],
+    "Adapters": {
+      "telegram-bot": {
+        "Enabled": true,
+        "Kind": "telegram-bot",
+        "BaseURL": "https://api.telegram.org",
+        "BotTokenEnv": "MESSAGE_DELIVERY_TELEGRAM_BOT_TOKEN",
+        "PublicBaseURL": "https://app.example.com"
+      }
+    }
+  },
+  "TelegramBot": {
+    "Enabled": true,
+    "WebhookPath": "/bot/webhook",
+    "WebhookSecretEnv": "MESSAGE_DELIVERY_TELEGRAM_WEBHOOK_SECRET",
+    "ConnectionRoutingKey": "notification.telegram.connection.requested",
+    "Presentation": {
+      "WelcomeTitle": {"en": "Welcome", "ru": "Добро пожаловать"},
+      "WelcomeBody": {"en": "Notifications are connected.", "ru": "Уведомления подключены."},
+      "NotificationFooter": {"en": "Notifications", "ru": "Уведомления"},
+      "OpenActionLabel": {"en": "Open in app", "ru": "Открыть в приложении"}
+    }
+  }
+}
+```
+
+Register `https://<public-host>/bot/webhook` with Bot API `setWebhook`, passing
+the same secret as `secret_token`. Do not expose the service port directly;
+place it behind TLS nginx or an equivalent proxy.
 
 For real SMTP delivery, use `message-delivery.smtp.example.json` or configure an adapter with:
 
@@ -378,6 +520,47 @@ For real SMTP delivery, use `message-delivery.smtp.example.json` or configure an
 | empty | Use implicit TLS on port `465`; otherwise use STARTTLS when the server advertises it. |
 
 For Yandex Mail, the documented SMTP settings are `smtp.yandex.com`, SSL/TLS and port `465`. Port `587` can be used only when the client starts without encryption and upgrades with STARTTLS. Use an app password, not the account's primary password.
+
+### Browser Web Push
+
+Web Push uses a single VAPID key pair per deployment. Generate it once and
+store the private value only in the deployment secret store:
+
+```bash
+go run ./cmd/generate-vapid
+```
+
+The command prints environment assignments. Put only the public value into the
+producer configuration that tells browsers how to subscribe. Configure the
+worker with the same pair:
+
+```json
+{
+  "Providers": {
+    "Push": {
+      "Enabled": true,
+      "DefaultProvider": "webpush",
+      "AllowedProviders": ["webpush"],
+      "Adapters": {
+        "webpush": {
+          "Enabled": true,
+          "Kind": "webpush",
+          "TimeoutSec": 10,
+          "VAPIDPublicKeyEnv": "MESSAGE_DELIVERY_WEB_PUSH_VAPID_PUBLIC_KEY",
+          "VAPIDPrivateKeyEnv": "MESSAGE_DELIVERY_WEB_PUSH_VAPID_PRIVATE_KEY",
+          "VAPIDSubscriber": "mailto:notifications@example.com"
+        }
+      }
+    }
+  }
+}
+```
+
+The browser must be served over HTTPS and must register a service worker before
+creating a subscription. The producer should send `recipient_type: "push"`,
+the browser endpoint in `recipient`, and the subscription keys in the metadata
+table above. A `404` or `410` response disables that subscription; a temporary
+`429` or `5xx` response is reported as `failed` for the producer retry policy.
 
 ## Usage
 
@@ -807,6 +990,7 @@ The tests cover:
 - provider plan calculation;
 - template rendering;
 - provider registry creation from config;
+- VAPID Web Push response classification and invalid subscription handling;
 - fallback from Telegram to SMS;
 - selected provider without fallback;
 - invalid provider handling;

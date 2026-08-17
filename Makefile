@@ -31,13 +31,15 @@ run:
 	go run ./cmd/main.go --config message-delivery.example.json
 
 install: build
+	@id -u message-delivery >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin message-delivery
 	install -D -m 0755 $(BIN_DIR)/$(BIN_FILE) /usr/bin/$(BIN_FILE)
 	install -D -m 0755 $(BIN_DIR)/$(CLIENT_FILE) /usr/bin/$(CLIENT_FILE)
 	install -D -m 0644 message-delivery.service /etc/systemd/system/message-delivery.service
 	install -d /etc/message-delivery
 	cp -R templates /etc/message-delivery/
 	@if [ ! -f /etc/message-delivery/config.json ]; then \
-		install -D -m 0600 message-delivery.example.json /etc/message-delivery/config.json; \
+		install -D -m 0640 message-delivery.example.json /etc/message-delivery/config.json; \
+		chown message-delivery:message-delivery /etc/message-delivery/config.json; \
 		echo "Installed default config to /etc/message-delivery/config.json — please edit it!"; \
 	fi
 	systemctl daemon-reload

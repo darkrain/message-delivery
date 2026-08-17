@@ -101,8 +101,8 @@ func parseOptions(args []string) (options, error) {
 	fs := flag.NewFlagSet("send-test-message", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.StringVar(&opts.configPath, "config", "message-delivery.example.json", "path to config JSON file")
-	fs.StringVar(&opts.recipientType, "recipient-type", delivery.RecipientTypePhone, "recipient type: phone or email")
-	fs.StringVar(&opts.recipient, "recipient", "", "recipient phone in E.164 or email address")
+	fs.StringVar(&opts.recipientType, "recipient-type", delivery.RecipientTypePhone, "recipient type: phone, email or push")
+	fs.StringVar(&opts.recipient, "recipient", "", "recipient phone in E.164, email address or push endpoint")
 	fs.StringVar(&opts.template, "template", "auth_verification_code", "template key")
 	fs.StringVar(&opts.purpose, "purpose", "manual_test", "delivery purpose")
 	fs.StringVar(&opts.source, "source", "manual-client", "event source")
@@ -125,7 +125,7 @@ func parseOptions(args []string) (options, error) {
 	if opts.recipient == "" {
 		return opts, fmt.Errorf("recipient is required")
 	}
-	if opts.recipientType != delivery.RecipientTypePhone && opts.recipientType != delivery.RecipientTypeEmail {
+	if opts.recipientType != delivery.RecipientTypePhone && opts.recipientType != delivery.RecipientTypeEmail && opts.recipientType != delivery.RecipientTypePush {
 		return opts, fmt.Errorf("unsupported recipient-type %q", opts.recipientType)
 	}
 	return opts, nil

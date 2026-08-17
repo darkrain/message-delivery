@@ -26,6 +26,9 @@ func TestLoadExampleConfig(t *testing.T) {
 	if cfg.AllowedProvider("email", "telegram") {
 		t.Error("telegram should not be allowed for email")
 	}
+	if !cfg.AllowedProvider("push", "webpush") {
+		t.Error("webpush should be allowed for push")
+	}
 }
 
 func TestLoadTelegramExampleConfig(t *testing.T) {
@@ -70,6 +73,29 @@ func TestLoadSMTPExampleConfig(t *testing.T) {
 	}
 	if adapter.Int("TimeoutSec") <= 0 {
 		t.Error("smtp timeout must be configured")
+	}
+}
+
+func TestValidateTelegramBotRequiresConfiguredToken(t *testing.T) {
+	cfg, err := Load("../../message-delivery.example.json")
+	if err != nil {
+		t.Fatalf("Load example config: %v", err)
+	}
+	cfg.Providers.Telegram.Enabled = true
+	cfg.Providers.Telegram.DefaultProvider = "telegram-bot"
+	cfg.Providers.Telegram.AllowedProviders = []string{"telegram-bot"}
+	cfg.Providers.Telegram.Adapters["telegram-bot"] = AdapterConfig{
+		"Enabled":     true,
+		"Kind":        "telegram-bot",
+		"BotTokenEnv": "MESSAGE_DELIVERY_TELEGRAM_BOT_TOKEN",
+	}
+
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "bot token") {
+		t.Fatalf("Validate() error = %v, want missing bot token", err)
+	}
+	t.Setenv("MESSAGE_DELIVERY_TELEGRAM_BOT_TOKEN", "test-token")
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() with token: %v", err)
 	}
 }
 
