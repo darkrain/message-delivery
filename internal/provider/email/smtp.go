@@ -3,7 +3,6 @@ package email
 import (
 	"context"
 	"crypto/tls"
-	"net/smtp"
 	"strings"
 	"time"
 
@@ -62,12 +61,7 @@ func (p *SMTP) Send(ctx context.Context, msg provider.Message) provider.Result {
 	}
 	mail.SetBody(contentType, msg.Body)
 
-	dialer := gomail.NewDialer(p.host, p.port, p.username, p.password)
-	dialer.SSL = p.security == "tls" || (p.security == "" && p.port == 465)
-	dialer.TLSConfig = &tls.Config{ServerName: p.authHost, MinVersion: tls.VersionTLS12}
-	if p.authHost != "" && p.authHost != p.host && p.username != "" {
-		dialer.Auth = smtp.PlainAuth("", p.username, p.password, p.authHost)
-	}
+	dialer := p.newDialer()
 
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
@@ -86,6 +80,18 @@ func (p *SMTP) Send(ctx context.Context, msg provider.Message) provider.Result {
 		}
 		return provider.Result{Status: provider.StatusSent}
 	}
+}
+
+func (p *SMTP) newDialer() *gomail.Dialer {
+	dialer := gomail.NewDialer(p.host, p.port, p.username, p.password)
+	dialer.SSL = p.security == "tls" || (p.security == "" && p.port == 465)
+	dialer.TLSConfig = &tls.Config{ServerName: p.authHost, MinVersion: tls.VersionTLS12}
+
+	// Let gomail create PlainAuth from the actual TCP endpoint. Supplying
+	// authHost here makes net/smtp reject a STARTTLS connection routed through
+	// a TCP proxy before it sends the credentials. authHost remains the TLS
+	// server name, so the upstream certificate is still verified.
+	return dialer
 }
 
 func smtpErrorCode(err error) string {
