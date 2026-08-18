@@ -60,6 +60,31 @@ func TestSMTPErrorCode(t *testing.T) {
 	}
 }
 
+func TestSMTPDialerSupportsTCPProxy(t *testing.T) {
+	provider := NewSMTP(
+		"smtp",
+		"smtp-proxy.example.test",
+		2525,
+		"smtp.gmail.com",
+		"user@example.com",
+		"password",
+		"user@example.com",
+		"starttls",
+		20*time.Second,
+	)
+
+	dialer := provider.newDialer()
+	if dialer.Host != "smtp-proxy.example.test" || dialer.Port != 2525 {
+		t.Fatalf("dialer endpoint = %s:%d, want TCP proxy", dialer.Host, dialer.Port)
+	}
+	if dialer.Auth != nil {
+		t.Fatal("dialer must let gomail use the TCP endpoint for PlainAuth")
+	}
+	if dialer.TLSConfig == nil || dialer.TLSConfig.ServerName != "smtp.gmail.com" {
+		t.Fatalf("TLS server name = %#v, want smtp.gmail.com", dialer.TLSConfig)
+	}
+}
+
 func envOrDefault(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value

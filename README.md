@@ -511,6 +511,11 @@ For real SMTP delivery, use `message-delivery.smtp.example.json` or configure an
 }
 ```
 
+The provider identifier is the adapter map key, for example `smtp`. A producer
+that sends `delivery.selected_provider` or `delivery.provider_chain` must use
+the same identifier. Otherwise the worker consumes the event but reports it as
+undeliverable without attempting SMTP delivery.
+
 `Security` supports:
 
 | Value | Behavior |
@@ -520,6 +525,26 @@ For real SMTP delivery, use `message-delivery.smtp.example.json` or configure an
 | empty | Use implicit TLS on port `465`; otherwise use STARTTLS when the server advertises it. |
 
 For Yandex Mail, the documented SMTP settings are `smtp.yandex.com`, SSL/TLS and port `465`. Port `587` can be used only when the client starts without encryption and upgrades with STARTTLS. Use an app password, not the account's primary password.
+
+#### Trusted TCP SMTP Proxy
+
+When a deployment cannot open outbound SMTP connections, it may use a trusted
+TCP proxy that forwards a fixed submission endpoint. The proxy must be
+source-restricted and must pass STARTTLS through without terminating TLS.
+
+```json
+{
+  "Host": "smtp-proxy.example.net",
+  "Port": 2525,
+  "Security": "starttls",
+  "AuthHost": "smtp.gmail.com"
+}
+```
+
+`Host` and `Port` are the TCP proxy endpoint. `AuthHost` is the upstream SMTP
+hostname used to verify the TLS certificate, such as `smtp.gmail.com`. The SMTP
+adapter authenticates against the actual TCP endpoint after TLS verification,
+which keeps the connection compatible with transparent proxies.
 
 ### Browser Web Push
 
