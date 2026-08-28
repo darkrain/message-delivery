@@ -76,6 +76,28 @@ func TestSendFormatsWelcome(t *testing.T) {
 	}
 }
 
+func TestSendConvertsHTMLFallbackToPlainText(t *testing.T) {
+	var request sendMessageRequest
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		_, _ = writer.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	result := New("telegram-bot", server.URL, "test-token", "", time.Second, config.TelegramBotPresentation{}).Send(context.Background(), provider.Message{
+		Recipient: "12345", Subject: "New notification", ContentType: "text/html; charset=UTF-8",
+		Body: "<article><p>Hello <strong>Anna</strong>.</p><p>Open the app for details.</p></article>",
+	})
+	if result.Status != provider.StatusSent {
+		t.Fatalf("result = %#v", result)
+	}
+	if request.Text != "🔔 <b>New notification</b>\n\nHello Anna. Open the app for details.\n\n<i>Notification delivery</i>" {
+		t.Fatalf("request.Text = %q", request.Text)
+	}
+}
+
 func TestSendMarksBlockedChatUndeliverable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusForbidden)
