@@ -133,6 +133,25 @@ func TestRenderNotificationTemplateWithoutDomainVariables(t *testing.T) {
 	}
 }
 
+func TestRenderNotificationSubtypeFallsBackToGenericTemplate(t *testing.T) {
+	renderer := NewRenderer(config.TemplatesConfig{
+		DefaultLocale: "en",
+		Items: map[string]config.TemplateConfig{
+			"notification": {TextBody: map[string]string{"en": "Open the application."}},
+		},
+	})
+	rendered, err := renderer.Render("notification_post_comment", "en", map[string]string{"actor": "agency_1"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if rendered.Body != "Open the application." {
+		t.Fatalf("Body = %q", rendered.Body)
+	}
+	if _, err := renderer.Render("unknown_template", "en", nil); err == nil {
+		t.Fatal("unrelated unknown template must remain an error")
+	}
+}
+
 func TestRenderTemplateFileRejectsBaseDirEscape(t *testing.T) {
 	renderer := NewRenderer(config.TemplatesConfig{
 		DefaultLocale: "en",

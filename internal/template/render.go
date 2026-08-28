@@ -26,6 +26,9 @@ func NewRenderer(cfg config.TemplatesConfig) *Renderer {
 
 func (r *Renderer) Render(templateKey string, locale string, variables map[string]string) (Rendered, error) {
 	item, ok := r.cfg.Items[templateKey]
+	if !ok && strings.HasPrefix(templateKey, "notification_") {
+		item, ok = r.cfg.Items["notification"]
+	}
 	if !ok {
 		return Rendered{}, fmt.Errorf("template: %s not found", templateKey)
 	}
