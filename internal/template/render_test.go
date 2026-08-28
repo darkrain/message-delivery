@@ -114,6 +114,25 @@ func TestRenderTextTemplateDoesNotHTMLEscapeVariables(t *testing.T) {
 	}
 }
 
+func TestRenderNotificationTemplateWithoutDomainVariables(t *testing.T) {
+	renderer := NewRenderer(config.TemplatesConfig{
+		DefaultLocale: "en",
+		Items: map[string]config.TemplateConfig{
+			"notification": {
+				Subject:  map[string]string{"en": "New notification", "ru": "Новое уведомление"},
+				TextBody: map[string]string{"en": "Open the application.", "ru": "Откройте приложение."},
+			},
+		},
+	})
+	rendered, err := renderer.Render("notification", "ru", nil)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if rendered.Subject != "Новое уведомление" || rendered.Body != "Откройте приложение." {
+		t.Fatalf("rendered = %#v", rendered)
+	}
+}
+
 func TestRenderTemplateFileRejectsBaseDirEscape(t *testing.T) {
 	renderer := NewRenderer(config.TemplatesConfig{
 		DefaultLocale: "en",
