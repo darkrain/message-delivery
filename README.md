@@ -294,8 +294,9 @@ per subscription. It should disable the subscription after `undeliverable`.
 
 For `telegram-bot`, `recipient` is the private numeric chat ID. The provider
 renders safe Telegram HTML: an emoji, title, body, localized footer and an
-inline action button. Dynamic title/body values are HTML-escaped. The button
-is included only when `PublicBaseURL` is a valid HTTPS URL and
+inline action button. Dynamic title/body values are HTML-escaped. When the
+fallback rendered body is an HTML email template, its markup is converted to
+plain text before it is sent to Telegram. The button is included only when `PublicBaseURL` is a valid HTTPS URL and
 `telegram_target_path` starts with `/`.
 
 | Event metadata | Telegram Bot payload |
