@@ -114,6 +114,44 @@ func TestRenderTextTemplateDoesNotHTMLEscapeVariables(t *testing.T) {
 	}
 }
 
+func TestRenderNotificationTemplateWithoutDomainVariables(t *testing.T) {
+	renderer := NewRenderer(config.TemplatesConfig{
+		DefaultLocale: "en",
+		Items: map[string]config.TemplateConfig{
+			"notification": {
+				Subject:  map[string]string{"en": "New notification", "ru": "Новое уведомление"},
+				TextBody: map[string]string{"en": "Open the application.", "ru": "Откройте приложение."},
+			},
+		},
+	})
+	rendered, err := renderer.Render("notification", "ru", nil)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if rendered.Subject != "Новое уведомление" || rendered.Body != "Откройте приложение." {
+		t.Fatalf("rendered = %#v", rendered)
+	}
+}
+
+func TestRenderNotificationSubtypeFallsBackToGenericTemplate(t *testing.T) {
+	renderer := NewRenderer(config.TemplatesConfig{
+		DefaultLocale: "en",
+		Items: map[string]config.TemplateConfig{
+			"notification": {TextBody: map[string]string{"en": "Open the application."}},
+		},
+	})
+	rendered, err := renderer.Render("notification_post_comment", "en", map[string]string{"actor": "agency_1"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if rendered.Body != "Open the application." {
+		t.Fatalf("Body = %q", rendered.Body)
+	}
+	if _, err := renderer.Render("unknown_template", "en", nil); err == nil {
+		t.Fatal("unrelated unknown template must remain an error")
+	}
+}
+
 func TestRenderTemplateFileRejectsBaseDirEscape(t *testing.T) {
 	renderer := NewRenderer(config.TemplatesConfig{
 		DefaultLocale: "en",
