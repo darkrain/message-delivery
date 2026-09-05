@@ -3,6 +3,9 @@ package webpush
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -32,6 +35,18 @@ func New(name, vapidPublicKey, vapidPrivateKey, subscriber string, timeout time.
 
 func (p *Provider) Name() string { return p.name }
 
+// vapidSubscriber hands the signing library the shape it expects. The library
+// prefixes anything that is not an https URL with "mailto:", so a subscriber
+// written the RFC way - "mailto:someone@example.com" - would be signed as
+// "mailto:mailto:someone@example.com" and Apple answers 403 BadJwtToken.
+func vapidSubscriber(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if strings.HasPrefix(strings.ToLower(trimmed), "mailto:") {
+		return strings.TrimSpace(trimmed[len("mailto:"):])
+	}
+	return trimmed
+}
+
 func (p *Provider) Send(ctx context.Context, message provider.Message) provider.Result {
 	if p.vapidPublicKey == "" || p.vapidPrivateKey == "" || p.subscriber == "" {
 		return provider.Result{Status: provider.StatusUndeliverable, ErrorCode: "webpush_not_configured"}
@@ -55,7 +70,7 @@ func (p *Provider) Send(ctx context.Context, message provider.Message) provider.
 		Endpoint: message.Recipient,
 		Keys:     webpushgo.Keys{P256dh: p256dh, Auth: authKey},
 	}, &webpushgo.Options{
-		HTTPClient: p.client, Subscriber: p.subscriber, VAPIDPublicKey: p.vapidPublicKey, VAPIDPrivateKey: p.vapidPrivateKey, TTL: 60,
+		HTTPClient: p.client, Subscriber: vapidSubscriber(p.subscriber), VAPIDPublicKey: p.vapidPublicKey, VAPIDPrivateKey: p.vapidPrivateKey, TTL: 60,
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -72,7 +87,13 @@ func (p *Provider) Send(ctx context.Context, message provider.Message) provider.
 	case response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= http.StatusInternalServerError:
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "webpush_service_unavailable"}
 	default:
-		return provider.Result{Status: provider.StatusFailed, ErrorCode: "webpush_rejected"}
+		// A push service refuses a message for reasons an operator has to act on
+		// - a stale VAPID key, an unacceptable subscriber claim, a payload the
+		// service will not take. The status and the answer say which one it is,
+		// so they travel with the failure instead of dying in this function.
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 512))
+		log.Printf("webpush rejected: endpoint=%s status=%d body=%s", message.Recipient, response.StatusCode, strings.TrimSpace(string(body)))
+		return provider.Result{Status: provider.StatusFailed, ErrorCode: fmt.Sprintf("webpush_rejected_%d", response.StatusCode)}
 	}
 }
 
