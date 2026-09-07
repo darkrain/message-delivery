@@ -32,6 +32,22 @@ func TestRenderTemplate(t *testing.T) {
 	}
 }
 
+func TestCustomNotificationTextIsPlainAndNotInterpolatedAgain(t *testing.T) {
+	r := NewRenderer(config.TemplatesConfig{})
+	text, err := r.Render("notification_custom_text", "ru", map[string]string{"template_subject": "Subject", "template_body": "<b>literal</b> {{title}}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text.Body != "<b>literal</b> {{title}}" || text.ContentType != "text/plain; charset=UTF-8" {
+		t.Fatalf("unexpected result: %#v", text)
+	}
+	for _, variables := range []map[string]string{nil, {"template_subject": "x\nBcc: bad", "template_body": "body"}, {"template_subject": "x", "template_body": ""}} {
+		if _, err := r.Render("notification_custom_text", "en", variables); err == nil {
+			t.Fatal("invalid template accepted")
+		}
+	}
+}
+
 func TestRenderMissingVariable(t *testing.T) {
 	renderer := NewRenderer(config.TemplatesConfig{
 		DefaultLocale: "en",

@@ -25,6 +25,16 @@ func NewRenderer(cfg config.TemplatesConfig) *Renderer {
 }
 
 func (r *Renderer) Render(templateKey string, locale string, variables map[string]string) (Rendered, error) {
+	// The notification producer validates and snapshots channel templates before
+	// enqueueing. Do not interpolate their rendered contents a second time.
+	if templateKey == "notification_custom_text" {
+		subject, subjectOK := variables["template_subject"]
+		body, bodyOK := variables["template_body"]
+		if !subjectOK || !bodyOK || strings.TrimSpace(subject) == "" || strings.TrimSpace(body) == "" || strings.ContainsAny(subject, "\r\n") || len(subject) > 4096 || len(body) > 100000 {
+			return Rendered{}, fmt.Errorf("template: invalid custom notification text")
+		}
+		return Rendered{Subject: subject, Body: body, ContentType: "text/plain; charset=UTF-8"}, nil
+	}
 	item, ok := r.cfg.Items[templateKey]
 	if !ok && strings.HasPrefix(templateKey, "notification_") {
 		item, ok = r.cfg.Items["notification"]
