@@ -3,6 +3,7 @@ package email
 import (
 	"context"
 	"crypto/tls"
+	"net/smtp"
 	"strings"
 	"time"
 
@@ -86,6 +87,14 @@ func (p *SMTP) newDialer() *gomail.Dialer {
 	dialer := gomail.NewDialer(p.host, p.port, p.username, p.password)
 	dialer.SSL = p.security == "tls" || (p.security == "" && p.port == 465)
 	dialer.TLSConfig = &tls.Config{ServerName: p.authHost, MinVersion: tls.VersionTLS12}
+
+	// Left to itself the dialer prefers CRAM-MD5 whenever the server lists it,
+	// and a server that keeps hashed passwords advertises the mechanism but
+	// answers 535 to the challenge. The credentials travel inside STARTTLS, so
+	// PLAIN is both safe and the one the server can actually verify.
+	if p.username != "" {
+		dialer.Auth = smtp.PlainAuth("", p.username, p.password, p.host)
+	}
 
 	// Let gomail create PlainAuth from the actual TCP endpoint. Supplying
 	// authHost here makes net/smtp reject a STARTTLS connection routed through
