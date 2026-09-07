@@ -80,6 +80,16 @@
           "ru": "email/auth_password_reset.ru.html"
         },
         "RequiredVariables": ["code", "ttl_sec"]
+      },
+      "notification": {
+        "Subject": {
+          "en": "New notification",
+          "ru": "Новое уведомление"
+        },
+        "TextBody": {
+          "en": "Open the application to view the notification.",
+          "ru": "Откройте приложение, чтобы посмотреть уведомление."
+        }
       }
     }
   }

@@ -169,6 +169,16 @@
           "ru": "email/chat_message_notification.ru.html"
         },
         "RequiredVariables": ["sender", "message", "chat_id"]
+      },
+      "notification": {
+        "Subject": {
+          "en": "New notification",
+          "ru": "Новое уведомление"
+        },
+        "TextBody": {
+          "en": "Open the application to view the notification.",
+          "ru": "Откройте приложение, чтобы посмотреть уведомление."
+        }
       }
     }
   }

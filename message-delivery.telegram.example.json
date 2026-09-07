@@ -66,6 +66,16 @@
           "ru": "Ваш код сброса пароля: {{code}}. Он действует {{ttl_sec}} секунд."
         },
         "RequiredVariables": ["code", "ttl_sec"]
+      },
+      "notification": {
+        "Subject": {
+          "en": "New notification",
+          "ru": "Новое уведомление"
+        },
+        "Body": {
+          "en": "Open the application to view the notification.",
+          "ru": "Откройте приложение, чтобы посмотреть уведомление."
+        }
       }
     }
   }

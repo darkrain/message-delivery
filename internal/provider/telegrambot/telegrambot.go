@@ -15,6 +15,7 @@ import (
 
 	"github.com/darkrain/message-delivery/internal/config"
 	"github.com/darkrain/message-delivery/internal/provider"
+	xhtml "golang.org/x/net/html"
 )
 
 const defaultBaseURL = "https://api.telegram.org"
@@ -138,7 +139,7 @@ func telegramMessage(message provider.Message, publicBaseURL string, presentatio
 
 	title := firstNonBlank(message.Metadata["telegram_title"], message.Subject, localized(presentation.NotificationFallbackTitle, locale))
 	title = telegramNotificationTitle(title, message.Metadata["telegram_event_type"], locale)
-	body := firstNonBlank(message.Metadata["telegram_body"], message.Body)
+	body := telegramBody(message)
 	parts := []string{telegramNotificationEmoji(message.Metadata) + " <b>" + html.EscapeString(truncateRunes(title, 320)) + "</b>"}
 	if body = strings.TrimSpace(body); body != "" && body != title {
 		parts = append(parts, html.EscapeString(truncateRunes(body, 3000)))
@@ -158,7 +159,7 @@ func telegramMessage(message provider.Message, publicBaseURL string, presentatio
 
 func telegramWelcomeText(message provider.Message, locale string, presentation config.TelegramBotPresentation) string {
 	title := firstNonBlank(message.Subject, localized(presentation.WelcomeTitle, locale))
-	body := firstNonBlank(message.Body, localized(presentation.WelcomeBody, locale))
+	body := firstNonBlank(telegramBody(message), localized(presentation.WelcomeBody, locale))
 	parts := []string{"👋 <b>" + html.EscapeString(truncateRunes(title, 320)) + "</b>"}
 	if body = strings.TrimSpace(body); body != "" && body != title {
 		parts = append(parts, html.EscapeString(truncateRunes(body, 3000)))
@@ -174,6 +175,40 @@ func telegramNotificationTitle(title, eventType, locale string) string {
 		return "Новое сообщение от " + title
 	}
 	return "New message from " + title
+}
+
+// telegramBody keeps channel-specific notification metadata as plain text and
+// converts an HTML email-template fallback into readable text before Telegram
+// escapes it for its own HTML parse mode.
+func telegramBody(message provider.Message) string {
+	if body := strings.TrimSpace(message.Metadata["telegram_body"]); body != "" {
+		return body
+	}
+	body := strings.TrimSpace(message.Body)
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(message.ContentType)), "text/html") {
+		return body
+	}
+	return htmlToPlainText(body)
+}
+
+func htmlToPlainText(value string) string {
+	document, err := xhtml.Parse(strings.NewReader(value))
+	if err != nil {
+		return value
+	}
+
+	var parts []string
+	var visit func(*xhtml.Node)
+	visit = func(node *xhtml.Node) {
+		if node.Type == xhtml.TextNode && strings.TrimSpace(node.Data) != "" {
+			parts = append(parts, strings.TrimSpace(node.Data))
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			visit(child)
+		}
+	}
+	visit(document)
+	return strings.NewReplacer(" .", ".", " ,", ",", " !", "!", " ?", "?", " :", ":", " ;", ";").Replace(strings.Join(parts, " "))
 }
 
 func telegramNotificationEmoji(metadata map[string]string) string {
