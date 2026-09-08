@@ -50,6 +50,9 @@ func TestCommonLayoutPreservesBodyAndUnsubscribeScope(t *testing.T) {
 				t.Fatal(err)
 			}
 			html := string(data)
+			if !strings.HasPrefix(html, "<!doctype html>") || !strings.Contains(html, `<meta charset="utf-8">`) {
+				t.Fatal("missing UTF-8 standards-mode document")
+			}
 			if strings.Count(html, "email-logo.png") != 1 || !strings.Contains(html, "background:#191c25") || !strings.HasPrefix(parsed.Header.Get("Content-Type"), "text/html") {
 				t.Fatal("missing common HTML layout")
 			}

@@ -56,6 +56,9 @@ func buildMessage(from string, msg provider.Message, layouts ...string) (*gomail
 		}
 		contentType = "text/html"
 	}
+	if strings.HasPrefix(strings.ToLower(contentType), "text/html") && !strings.Contains(strings.ToLower(body), "<html") {
+		body = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0">` + body + `</body></html>`
+	}
 	mail.SetBody(contentType, body)
 	return mail, nil
 }
