@@ -74,6 +74,46 @@ func TestWebhookRejectsWrongSecret(t *testing.T) {
 	}
 }
 
+func TestPlainStartGreetsWithoutBinding(t *testing.T) {
+	for _, command := range []string{"/start", "/start@sample_bot", "/start   "} {
+		publisher := &publishedConnection{}
+		welcome := &welcomeSender{result: provider.Result{Status: provider.StatusSent}}
+		handler, err := NewWebhookHandler(config.TelegramBotConfig{Enabled: true, MaxBodyBytes: 1024, PublishTimeoutSec: 1}, "test-secret", publisher, welcome, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/bot/webhook", strings.NewReader(fmt.Sprintf(`{"update_id":17,"message":{"text":%q,"chat":{"id":55,"type":"private"},"from":{"id":55,"language_code":"ru"}}}`, command)))
+		request.Header.Set(secretTokenHeader, "test-secret")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNoContent || publisher.event.EventID != "" || welcome.message.Metadata["telegram_presentation"] != "start" || welcome.message.Recipient != "55" {
+			t.Fatalf("bare start did not greet safely: status=%d", response.Code)
+		}
+	}
+}
+
+func TestGreetingIgnoresInvalidUpdates(t *testing.T) {
+	for _, payload := range []string{
+		`{"update_id":1,"message":{"text":"/start","chat":{"id":-55,"type":"group"},"from":{"id":55}}}`,
+		`{"update_id":1,"message":{"text":"/start","chat":{"id":55,"type":"private"},"from":{"id":56}}}`,
+		`{"update_id":1,"message":{"text":"hello","chat":{"id":55,"type":"private"},"from":{"id":55}}}`,
+		`{"update_id":1}`,
+	} {
+		publisher, welcome := &publishedConnection{}, &welcomeSender{}
+		handler, err := NewWebhookHandler(config.TelegramBotConfig{Enabled: true, MaxBodyBytes: 1024, PublishTimeoutSec: 1}, "secret", publisher, welcome, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/bot/webhook", strings.NewReader(payload))
+		request.Header.Set(secretTokenHeader, "secret")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != 204 || welcome.message.Recipient != "" || publisher.event.EventID != "" {
+			t.Fatal("invalid update generated a greeting or binding")
+		}
+	}
+}
+
 func TestWebhookIgnoresGroupAndNonStartMessages(t *testing.T) {
 	publisher := &publishedConnection{}
 	handler, err := NewWebhookHandler(config.TelegramBotConfig{Enabled: true, MaxBodyBytes: 1024, PublishTimeoutSec: 1}, "test-secret", publisher, &welcomeSender{}, nil)

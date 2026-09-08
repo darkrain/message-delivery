@@ -317,6 +317,10 @@ is not stored in the queue. After accepting `/start`, the Bot sends a welcome
 message. A producer-side consumer owns the user-to-chat binding; the delivery
 service does not persist it.
 
+A bare `/start` in a private chat sends localized connection instructions
+(`TelegramBot.Presentation.StartTitle` / `StartBody`). It does not publish a
+connection event, claim a successful connection, or alter existing bindings.
+
 `TelegramBot.Presentation` holds deployment-specific copy: `WelcomeTitle`,
 `WelcomeBody`, `NotificationFallbackTitle`, `NotificationFooter` and
 `OpenActionLabel`. Each field is a locale-to-text map. Generic English/Russian
