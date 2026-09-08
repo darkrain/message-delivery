@@ -20,6 +20,7 @@ import (
 const secretTokenHeader = "X-Telegram-Bot-Api-Secret-Token"
 
 var startCommand = regexp.MustCompile(`^/start(?:@[A-Za-z0-9_]+)?\s+([A-Za-z0-9_-]{20,64})\s*$`)
+var plainStartCommand = regexp.MustCompile(`^/start(?:@[A-Za-z0-9_]+)?\s*$`)
 
 type ConnectionPublisher interface {
 	PublishTelegramConnection(context.Context, delivery.TelegramConnectionRequestedEvent) error
@@ -73,6 +74,9 @@ func (handler *WebhookHandler) ServeHTTP(writer http.ResponseWriter, request *ht
 	}
 	event, ok := telegramConnectionEvent(update)
 	if !ok {
+		if privateUserUpdate(update) && plainStartCommand.MatchString(update.Message.Text) {
+			handler.sendBotGreeting(request.Context(), delivery.TelegramConnectionRequestedEvent{EventID: fmt.Sprintf("telegram-bot-update-%d", update.UpdateID), UpdateID: update.UpdateID, ChatID: update.Message.Chat.ID}, update.Message.From.LanguageCode, "start")
+		}
 		writer.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -88,6 +92,10 @@ func (handler *WebhookHandler) ServeHTTP(writer http.ResponseWriter, request *ht
 }
 
 func (handler *WebhookHandler) sendWelcome(ctx context.Context, event delivery.TelegramConnectionRequestedEvent, locale string) {
+	handler.sendBotGreeting(ctx, event, locale, "welcome")
+}
+
+func (handler *WebhookHandler) sendBotGreeting(ctx context.Context, event delivery.TelegramConnectionRequestedEvent, locale, presentation string) {
 	welcomeContext, cancel := context.WithTimeout(ctx, time.Duration(handler.cfg.PublishTimeoutSec)*time.Second)
 	defer cancel()
 	result := handler.welcome.Send(welcomeContext, provider.Message{
@@ -95,7 +103,7 @@ func (handler *WebhookHandler) sendWelcome(ctx context.Context, event delivery.T
 		RecipientType: delivery.RecipientTypeTelegram,
 		Recipient:     fmt.Sprintf("%d", event.ChatID),
 		Metadata: map[string]string{
-			"telegram_presentation": "welcome",
+			"telegram_presentation": presentation,
 			"locale":                locale,
 		},
 	})
@@ -122,7 +130,7 @@ type update struct {
 }
 
 func telegramConnectionEvent(update update) (delivery.TelegramConnectionRequestedEvent, bool) {
-	if update.UpdateID <= 0 || update.Message == nil || update.Message.Chat.Type != "private" || update.Message.Chat.ID <= 0 || update.Message.From.ID != update.Message.Chat.ID {
+	if !privateUserUpdate(update) {
 		return delivery.TelegramConnectionRequestedEvent{}, false
 	}
 	matches := startCommand.FindStringSubmatch(update.Message.Text)
@@ -139,6 +147,10 @@ func telegramConnectionEvent(update update) (delivery.TelegramConnectionRequeste
 		StartTokenHash: telegramStartTokenHash(matches[1]), CreatedAt: time.Now().UTC(),
 	}
 	return event, event.Validate() == nil
+}
+
+func privateUserUpdate(update update) bool {
+	return update.UpdateID > 0 && update.Message != nil && update.Message.Chat.Type == "private" && update.Message.Chat.ID > 0 && update.Message.From.ID == update.Message.Chat.ID
 }
 
 func telegramStartTokenHash(token string) string {

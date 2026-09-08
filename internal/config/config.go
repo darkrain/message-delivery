@@ -58,6 +58,8 @@ type TelegramBotConfig struct {
 // delivery service stays domain-neutral while each deployment controls its
 // name, welcome text and action labels.
 type TelegramBotPresentation struct {
+	StartTitle                map[string]string `json:"StartTitle"`
+	StartBody                 map[string]string `json:"StartBody"`
 	WelcomeTitle              map[string]string `json:"WelcomeTitle"`
 	WelcomeBody               map[string]string `json:"WelcomeBody"`
 	NotificationFallbackTitle map[string]string `json:"NotificationFallbackTitle"`
@@ -268,6 +270,11 @@ func (c *Config) setDefaults() {
 // copy. The fallback remains generic so the message-delivery repository does
 // not encode a particular product or brand.
 func (presentation TelegramBotPresentation) WithDefaults() TelegramBotPresentation {
+	presentation.StartTitle = mergeTelegramText(presentation.StartTitle, map[string]string{"en": "Welcome", "ru": "Добро пожаловать"})
+	presentation.StartBody = mergeTelegramText(presentation.StartBody, map[string]string{
+		"en": "To connect notifications, open notification settings in the app and select Connect Telegram. If already connected, your connection is unchanged.",
+		"ru": "Чтобы подключить уведомления, откройте настройки уведомлений в приложении и нажмите «Подключить Telegram». Если вы уже подключены, ваша привязка сохранена.",
+	})
 	presentation.WelcomeTitle = mergeTelegramText(presentation.WelcomeTitle, map[string]string{
 		"en": "Telegram notifications connected",
 		"ru": "Telegram-уведомления подключены",

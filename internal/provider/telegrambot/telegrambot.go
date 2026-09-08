@@ -133,6 +133,11 @@ type botResponse struct {
 func telegramMessage(message provider.Message, publicBaseURL string, presentation config.TelegramBotPresentation) (string, *inlineKeyboard) {
 	presentation = presentation.WithDefaults()
 	locale := telegramLocale(message.Metadata["locale"])
+	if message.Metadata["telegram_presentation"] == "start" {
+		presentation.WelcomeTitle = presentation.StartTitle
+		presentation.WelcomeBody = presentation.StartBody
+		return telegramWelcomeText(message, locale, presentation), nil
+	}
 	if message.Metadata["telegram_presentation"] == "welcome" {
 		return telegramWelcomeText(message, locale, presentation), nil
 	}
