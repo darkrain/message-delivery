@@ -51,15 +51,10 @@ func (p *SMTP) Send(ctx context.Context, msg provider.Message) provider.Result {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_not_configured"}
 	}
 
-	mail := gomail.NewMessage()
-	mail.SetHeader("From", p.from)
-	mail.SetHeader("To", msg.Recipient)
-	mail.SetHeader("Subject", msg.Subject)
-	contentType := msg.ContentType
-	if contentType == "" {
-		contentType = "text/plain; charset=UTF-8"
+	mail, err := buildMessage(p.from, msg)
+	if err != nil {
+		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_invalid_message"}
 	}
-	mail.SetBody(contentType, msg.Body)
 
 	dialer := p.newDialer()
 
