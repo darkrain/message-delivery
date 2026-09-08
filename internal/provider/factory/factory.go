@@ -70,6 +70,7 @@ func buildProvider(name string, adapter config.AdapterConfig, recipientType stri
 			from,
 			adapter.String("Security"),
 			timeout(adapter, 15*time.Second),
+			adapter.String("AuthMethod"),
 		)
 	case "telegram-gateway":
 		return telegram.NewGateway(name, adapter.String("BaseURL"), adapter.EnvString("ApiTokenEnv"), timeout(adapter, 10*time.Second))

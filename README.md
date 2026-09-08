@@ -497,6 +497,14 @@ place it behind TLS nginx or an equivalent proxy.
 
 For real SMTP delivery, use `message-delivery.smtp.example.json` or configure an adapter with:
 
+The optional adapter key `AuthMethod` accepts `auto` (default, existing gomail
+selection) or `plain`. Use `plain` when a server advertises CRAM-MD5 but rejects
+it for the account. Explicit PLAIN is refused without TLS, including localhost;
+STARTTLS certificate verification remains enabled. `AuthHost` is the certificate
+name, while authentication binds to `Host` (the TCP endpoint).
+`SMTP_AUTH_LIVE=1 go test ./internal/provider/email -run TestSMTPPlainAuthLiveWithoutSending`
+checks the same dialer using the SMTP environment settings without sending mail.
+
 ```json
 {
   "Enabled": true,
