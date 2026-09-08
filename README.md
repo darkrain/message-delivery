@@ -505,6 +505,17 @@ name, while authentication binds to `Host` (the TCP endpoint).
 `SMTP_AUTH_LIVE=1 go test ./internal/provider/email -run TestSMTPPlainAuthLiveWithoutSending`
 checks the same dialer using the SMTP environment settings without sending mail.
 
+`HTMLLayoutFile: "email/layout.html"` enables an operator-owned common SMTP
+wrapper (relative to `Templates.BaseDir`, loaded and validated at startup).
+The layout must contain exactly one `{{body}}` and one `{{footer}}` slot.
+Use body fragments from `templates/email/bodies/` with it, not full HTML pages.
+Plain-text email is escaped and converted to HTML automatically. Future SMTP
+templates also receive this wrapper; other channels are unaffected.
+`notification_custom_html` is the already-branded API snapshot and is not wrapped
+again. The supplied IAMFREE layout matches the notification editor wrapper.
+Security codes/reset email never acquire unsubscribe metadata or links; notification
+unsubscribe is inserted into the footer. Layout substitution is single-pass.
+
 ```json
 {
   "Enabled": true,

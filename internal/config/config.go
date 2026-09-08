@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -154,6 +155,23 @@ func Load(path string) (*Config, error) {
 	cfg.applyEnv()
 	cfg.setDefaults()
 	cfg.resolvePaths(path)
+	for _, adapter := range cfg.Providers.Email.Adapters {
+		if name := adapter.String("HTMLLayoutFile"); name != "" {
+			layoutPath := name
+			if !filepath.IsAbs(layoutPath) {
+				layoutPath = filepath.Join(cfg.Templates.BaseDir, layoutPath)
+			}
+			data, err := os.ReadFile(filepath.Clean(layoutPath))
+			if err != nil {
+				return nil, fmt.Errorf("config: read email layout: %w", err)
+			}
+			layout := string(data)
+			if strings.Count(layout, "{{body}}") != 1 || strings.Count(layout, "{{footer}}") != 1 {
+				return nil, fmt.Errorf("config: email layout requires one body and footer slot")
+			}
+			adapter["HTMLLayout"] = layout
+		}
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}

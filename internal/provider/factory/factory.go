@@ -71,7 +71,7 @@ func buildProvider(name string, adapter config.AdapterConfig, recipientType stri
 			adapter.String("Security"),
 			timeout(adapter, 15*time.Second),
 			adapter.String("AuthMethod"),
-		)
+		).WithHTMLLayout(adapter.String("HTMLLayout"))
 	case "telegram-gateway":
 		return telegram.NewGateway(name, adapter.String("BaseURL"), adapter.EnvString("ApiTokenEnv"), timeout(adapter, 10*time.Second))
 	case "webpush":

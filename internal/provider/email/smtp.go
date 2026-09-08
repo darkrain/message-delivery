@@ -22,6 +22,7 @@ type SMTP struct {
 	from       string
 	security   string
 	authMethod string
+	htmlLayout string
 	timeout    time.Duration
 }
 
@@ -62,7 +63,7 @@ func (p *SMTP) Send(ctx context.Context, msg provider.Message) provider.Result {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_auth_method_invalid"}
 	}
 
-	mail, err := buildMessage(p.from, msg)
+	mail, err := buildMessage(p.from, msg, p.htmlLayout)
 	if err != nil {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_invalid_message"}
 	}
