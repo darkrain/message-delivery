@@ -317,6 +317,10 @@ is not stored in the queue. After accepting `/start`, the Bot sends a welcome
 message. A producer-side consumer owns the user-to-chat binding; the delivery
 service does not persist it.
 
+A bare `/start` in a private chat sends localized connection instructions
+(`TelegramBot.Presentation.StartTitle` / `StartBody`). It does not publish a
+connection event, claim a successful connection, or alter existing bindings.
+
 `TelegramBot.Presentation` holds deployment-specific copy: `WelcomeTitle`,
 `WelcomeBody`, `NotificationFallbackTitle`, `NotificationFooter` and
 `OpenActionLabel`. Each field is a locale-to-text map. Generic English/Russian
@@ -496,6 +500,25 @@ the same secret as `secret_token`. Do not expose the service port directly;
 place it behind TLS nginx or an equivalent proxy.
 
 For real SMTP delivery, use `message-delivery.smtp.example.json` or configure an adapter with:
+
+The optional adapter key `AuthMethod` accepts `auto` (default, existing gomail
+selection) or `plain`. Use `plain` when a server advertises CRAM-MD5 but rejects
+it for the account. Explicit PLAIN is refused without TLS, including localhost;
+STARTTLS certificate verification remains enabled. `AuthHost` is the certificate
+name, while authentication binds to `Host` (the TCP endpoint).
+`SMTP_AUTH_LIVE=1 go test ./internal/provider/email -run TestSMTPPlainAuthLiveWithoutSending`
+checks the same dialer using the SMTP environment settings without sending mail.
+
+`HTMLLayoutFile: "email/layout.html"` enables an operator-owned common SMTP
+wrapper (relative to `Templates.BaseDir`, loaded and validated at startup).
+The layout must contain exactly one `{{body}}` and one `{{footer}}` slot.
+Use body fragments from `templates/email/bodies/` with it, not full HTML pages.
+Plain-text email is escaped and converted to HTML automatically. Future SMTP
+templates also receive this wrapper; other channels are unaffected.
+`notification_custom_html` is the already-branded API snapshot and is not wrapped
+again. The supplied IAMFREE layout matches the notification editor wrapper.
+Security codes/reset email never acquire unsubscribe metadata or links; notification
+unsubscribe is inserted into the footer. Layout substitution is single-pass.
 
 ```json
 {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,6 +74,19 @@ func TestSendFormatsWelcome(t *testing.T) {
 	}
 	if request.Text != "👋 <b>Добро пожаловать в iamfree</b>\n\nУведомления подключены." || request.ReplyMarkup != nil {
 		t.Fatalf("request = %#v", request)
+	}
+}
+
+func TestPlainStartDoesNotClaimConnected(t *testing.T) {
+	for _, locale := range []string{"ru", "en"} {
+		presentation := config.TelegramBotPresentation{}.WithDefaults()
+		text, keyboard := telegramMessage(provider.Message{Metadata: map[string]string{"telegram_presentation": "start", "locale": locale}}, "https://example.test", presentation)
+		if text == "" || keyboard != nil || text == presentation.WelcomeBody[locale] {
+			t.Fatal("start must show connection instructions")
+		}
+		if !strings.Contains(text, presentation.StartBody[locale]) {
+			t.Fatal("start instructions missing")
+		}
 	}
 }
 

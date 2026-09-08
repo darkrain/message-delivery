@@ -32,6 +32,34 @@ func TestRenderTemplate(t *testing.T) {
 	}
 }
 
+func TestCustomHTMLPreservesMarkupAndDoesNotInterpolateAgain(t *testing.T) {
+	r := NewRenderer(config.TemplatesConfig{})
+	body := `<h1>Title &amp; text</h1><p>{{message}}</p>`
+	result, err := r.Render("notification_custom_html", "ru", map[string]string{"template_subject": "Title", "template_body": body, "message": "must not substitute"})
+	if err != nil || result.Body != body || result.ContentType != "text/html; charset=UTF-8" {
+		t.Fatalf("unexpected HTML render: %#v %v", result, err)
+	}
+	if _, err = r.Render("notification_custom_html", "ru", map[string]string{"template_subject": "Bad\nHeader", "template_body": body}); err == nil {
+		t.Fatal("unsafe subject accepted")
+	}
+}
+
+func TestCustomNotificationTextIsPlainAndNotInterpolatedAgain(t *testing.T) {
+	r := NewRenderer(config.TemplatesConfig{})
+	text, err := r.Render("notification_custom_text", "ru", map[string]string{"template_subject": "Subject", "template_body": "<b>literal</b> {{title}}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text.Body != "<b>literal</b> {{title}}" || text.ContentType != "text/plain; charset=UTF-8" {
+		t.Fatalf("unexpected result: %#v", text)
+	}
+	for _, variables := range []map[string]string{nil, {"template_subject": "x\nBcc: bad", "template_body": "body"}, {"template_subject": "x", "template_body": ""}} {
+		if _, err := r.Render("notification_custom_text", "en", variables); err == nil {
+			t.Fatal("invalid template accepted")
+		}
+	}
+}
+
 func TestRenderMissingVariable(t *testing.T) {
 	renderer := NewRenderer(config.TemplatesConfig{
 		DefaultLocale: "en",

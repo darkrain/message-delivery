@@ -3,6 +3,8 @@ package email
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
+	"net/smtp"
 	"strings"
 	"time"
 
@@ -11,18 +13,24 @@ import (
 )
 
 type SMTP struct {
-	name     string
-	host     string
-	port     int
-	authHost string
-	username string
-	password string
-	from     string
-	security string
-	timeout  time.Duration
+	name       string
+	host       string
+	port       int
+	authHost   string
+	username   string
+	password   string
+	from       string
+	security   string
+	authMethod string
+	htmlLayout string
+	timeout    time.Duration
 }
 
-func NewSMTP(name, host string, port int, authHost, username, password, from, security string, timeout time.Duration) *SMTP {
+func NewSMTP(name, host string, port int, authHost, username, password, from, security string, timeout time.Duration, authMethods ...string) *SMTP {
+	authMethod := "auto"
+	if len(authMethods) > 0 && authMethods[0] != "" {
+		authMethod = strings.ToLower(authMethods[0])
+	}
 	if authHost == "" {
 		authHost = host
 	}
@@ -30,15 +38,16 @@ func NewSMTP(name, host string, port int, authHost, username, password, from, se
 		timeout = 15 * time.Second
 	}
 	return &SMTP{
-		name:     name,
-		host:     host,
-		port:     port,
-		authHost: authHost,
-		username: username,
-		password: password,
-		from:     from,
-		security: strings.ToLower(security),
-		timeout:  timeout,
+		name:       name,
+		host:       host,
+		port:       port,
+		authHost:   authHost,
+		username:   username,
+		password:   password,
+		from:       from,
+		security:   strings.ToLower(security),
+		authMethod: authMethod,
+		timeout:    timeout,
 	}
 }
 
@@ -50,16 +59,14 @@ func (p *SMTP) Send(ctx context.Context, msg provider.Message) provider.Result {
 	if p.host == "" || p.port <= 0 || p.from == "" {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_not_configured"}
 	}
-
-	mail := gomail.NewMessage()
-	mail.SetHeader("From", p.from)
-	mail.SetHeader("To", msg.Recipient)
-	mail.SetHeader("Subject", msg.Subject)
-	contentType := msg.ContentType
-	if contentType == "" {
-		contentType = "text/plain; charset=UTF-8"
+	if p.authMethod != "auto" && p.authMethod != "plain" {
+		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_auth_method_invalid"}
 	}
-	mail.SetBody(contentType, msg.Body)
+
+	mail, err := buildMessage(p.from, msg, p.htmlLayout)
+	if err != nil {
+		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_invalid_message"}
+	}
 
 	dialer := p.newDialer()
 
@@ -87,11 +94,21 @@ func (p *SMTP) newDialer() *gomail.Dialer {
 	dialer.SSL = p.security == "tls" || (p.security == "" && p.port == 465)
 	dialer.TLSConfig = &tls.Config{ServerName: p.authHost, MinVersion: tls.VersionTLS12}
 
-	// Let gomail create PlainAuth from the actual TCP endpoint. Supplying
-	// authHost here makes net/smtp reject a STARTTLS connection routed through
-	// a TCP proxy before it sends the credentials. authHost remains the TLS
-	// server name, so the upstream certificate is still verified.
+	// Explicit PLAIN avoids gomail preferring a broken advertised CRAM-MD5.
+	// Auth binds to the TCP endpoint; AuthHost remains the verified TLS name.
+	if p.authMethod == "plain" {
+		dialer.Auth = tlsOnlyPlainAuth{smtp.PlainAuth("", p.username, p.password, p.host)}
+	}
 	return dialer
+}
+
+type tlsOnlyPlainAuth struct{ smtp.Auth }
+
+func (auth tlsOnlyPlainAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	if !server.TLS {
+		return "", nil, fmt.Errorf("SMTP PLAIN authentication requires TLS")
+	}
+	return auth.Auth.Start(server)
 }
 
 func smtpErrorCode(err error) string {

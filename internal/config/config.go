@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -58,6 +59,8 @@ type TelegramBotConfig struct {
 // delivery service stays domain-neutral while each deployment controls its
 // name, welcome text and action labels.
 type TelegramBotPresentation struct {
+	StartTitle                map[string]string `json:"StartTitle"`
+	StartBody                 map[string]string `json:"StartBody"`
 	WelcomeTitle              map[string]string `json:"WelcomeTitle"`
 	WelcomeBody               map[string]string `json:"WelcomeBody"`
 	NotificationFallbackTitle map[string]string `json:"NotificationFallbackTitle"`
@@ -154,6 +157,23 @@ func Load(path string) (*Config, error) {
 	cfg.applyEnv()
 	cfg.setDefaults()
 	cfg.resolvePaths(path)
+	for _, adapter := range cfg.Providers.Email.Adapters {
+		if name := adapter.String("HTMLLayoutFile"); name != "" {
+			layoutPath := name
+			if !filepath.IsAbs(layoutPath) {
+				layoutPath = filepath.Join(cfg.Templates.BaseDir, layoutPath)
+			}
+			data, err := os.ReadFile(filepath.Clean(layoutPath))
+			if err != nil {
+				return nil, fmt.Errorf("config: read email layout: %w", err)
+			}
+			layout := string(data)
+			if strings.Count(layout, "{{body}}") != 1 || strings.Count(layout, "{{footer}}") != 1 {
+				return nil, fmt.Errorf("config: email layout requires one body and footer slot")
+			}
+			adapter["HTMLLayout"] = layout
+		}
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -268,6 +288,11 @@ func (c *Config) setDefaults() {
 // copy. The fallback remains generic so the message-delivery repository does
 // not encode a particular product or brand.
 func (presentation TelegramBotPresentation) WithDefaults() TelegramBotPresentation {
+	presentation.StartTitle = mergeTelegramText(presentation.StartTitle, map[string]string{"en": "Welcome", "ru": "Добро пожаловать"})
+	presentation.StartBody = mergeTelegramText(presentation.StartBody, map[string]string{
+		"en": "To connect notifications, open notification settings in the app and select Connect Telegram. If already connected, your connection is unchanged.",
+		"ru": "Чтобы подключить уведомления, откройте настройки уведомлений в приложении и нажмите «Подключить Telegram». Если вы уже подключены, ваша привязка сохранена.",
+	})
 	presentation.WelcomeTitle = mergeTelegramText(presentation.WelcomeTitle, map[string]string{
 		"en": "Telegram notifications connected",
 		"ru": "Telegram-уведомления подключены",
