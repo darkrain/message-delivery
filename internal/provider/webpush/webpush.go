@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -47,6 +48,32 @@ func vapidSubscriber(value string) string {
 	return trimmed
 }
 
+// pushServiceHosts are the push services a subscription may point at.
+var pushServiceHosts = []string{
+	"fcm.googleapis.com",
+	"android.googleapis.com",
+	"updates.push.services.mozilla.com",
+	"push.apple.com",
+	"notify.windows.com",
+}
+
+func endpointAllowed(raw string) bool {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "https" {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+	if host == "" {
+		return false
+	}
+	for _, allowed := range pushServiceHosts {
+		if host == allowed || strings.HasSuffix(host, "."+allowed) {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *Provider) Send(ctx context.Context, message provider.Message) provider.Result {
 	if p.vapidPublicKey == "" || p.vapidPrivateKey == "" || p.subscriber == "" {
 		return provider.Result{Status: provider.StatusUndeliverable, ErrorCode: "webpush_not_configured"}
@@ -54,6 +81,12 @@ func (p *Provider) Send(ctx context.Context, message provider.Message) provider.
 	p256dh, authKey := message.Metadata["push_p256dh"], message.Metadata["push_auth"]
 	if strings.TrimSpace(message.Recipient) == "" || strings.TrimSpace(p256dh) == "" || strings.TrimSpace(authKey) == "" {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "webpush_subscription_invalid"}
+	}
+	// The recipient is a URL that arrived from a browser and this worker posts
+	// to it. Whoever stores the subscription decides where the request goes, so
+	// the address is checked again here, next to the call that makes it.
+	if !endpointAllowed(message.Recipient) {
+		return provider.Result{Status: provider.StatusUndeliverable, ErrorCode: "webpush_endpoint_rejected"}
 	}
 	payload, err := json.Marshal(map[string]string{
 		"title":       first(message.Metadata["push_title"], message.Subject),
