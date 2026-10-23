@@ -37,8 +37,27 @@ func TestProviderClassifiesExpiredSubscription(t *testing.T) {
 	if result.Status != provider.StatusUndeliverable || result.ErrorCode != "webpush_subscription_expired" {
 		t.Fatalf("result = %#v", result)
 	}
-	if client.request == nil || client.request.URL.String() != "https://push.example.test/subscription" {
+	if client.request == nil || client.request.URL.String() != "https://fcm.googleapis.com/subscription" {
 		t.Fatalf("request = %#v", client.request)
+	}
+}
+
+func TestProviderRejectsUnknownPushServiceWithoutNetwork(t *testing.T) {
+	privateKey, publicKey, err := webpushgo.GenerateVAPIDKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &responseClient{statusCode: http.StatusGone}
+	sender := New("webpush", publicKey, privateKey, "notifications@example.test", 0)
+	sender.client = client
+	message := validPushMessage(t)
+	message.Recipient = "https://push.example.test/subscription"
+	result := sender.Send(context.Background(), message)
+	if result.Status != provider.StatusUndeliverable || result.ErrorCode != "webpush_endpoint_rejected" {
+		t.Fatalf("result = %#v", result)
+	}
+	if client.request != nil {
+		t.Fatal("a rejected push service must not receive a request")
 	}
 }
 
@@ -64,7 +83,7 @@ func validPushMessage(t *testing.T) provider.Message {
 		t.Fatal(err)
 	}
 	return provider.Message{
-		EventID: "notification-push-1-7", Subject: "New message", Body: "Hello", Recipient: "https://push.example.test/subscription",
+		EventID: "notification-push-1-7", Subject: "New message", Body: "Hello", Recipient: "https://fcm.googleapis.com/subscription",
 		Metadata: map[string]string{
 			"push_p256dh": base64.RawURLEncoding.EncodeToString(elliptic.Marshal(elliptic.P256(), x, y)),
 			"push_auth":   base64.RawURLEncoding.EncodeToString(authKey),
