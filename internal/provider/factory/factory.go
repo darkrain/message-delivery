@@ -60,6 +60,17 @@ func buildProvider(name string, adapter config.AdapterConfig, recipientType stri
 		if from == "" {
 			from = adapter.EnvString("FromEnv")
 		}
+		brands := map[string]email.Brand{}
+		if values, ok := adapter["Brands"].(map[string]any); ok {
+			for name, value := range values {
+				object, ok := value.(map[string]any)
+				if !ok {
+					return provider.NewUnavailable(name, "email_brand_invalid")
+				}
+				b := config.AdapterConfig(object)
+				brands[name] = email.Brand{From: b.String("From"), Layout: b.String("HTMLLayout"), LogoFile: b.String("LogoFile")}
+			}
+		}
 		return email.NewSMTP(
 			name,
 			adapter.String("Host"),
@@ -71,7 +82,7 @@ func buildProvider(name string, adapter config.AdapterConfig, recipientType stri
 			adapter.String("Security"),
 			timeout(adapter, 15*time.Second),
 			adapter.String("AuthMethod"),
-		).WithHTMLLayout(adapter.String("HTMLLayout"))
+		).WithHTMLLayout(adapter.String("HTMLLayout")).WithBrands(adapter.String("DefaultBrand"), brands)
 	case "telegram-gateway":
 		return telegram.NewGateway(name, adapter.String("BaseURL"), adapter.EnvString("ApiTokenEnv"), timeout(adapter, 10*time.Second))
 	case "webpush":

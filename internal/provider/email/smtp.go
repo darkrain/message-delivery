@@ -13,17 +13,19 @@ import (
 )
 
 type SMTP struct {
-	name       string
-	host       string
-	port       int
-	authHost   string
-	username   string
-	password   string
-	from       string
-	security   string
-	authMethod string
-	htmlLayout string
-	timeout    time.Duration
+	name         string
+	host         string
+	port         int
+	authHost     string
+	username     string
+	password     string
+	from         string
+	security     string
+	authMethod   string
+	htmlLayout   string
+	brands       map[string]Brand
+	defaultBrand string
+	timeout      time.Duration
 }
 
 func NewSMTP(name, host string, port int, authHost, username, password, from, security string, timeout time.Duration, authMethods ...string) *SMTP {
@@ -63,7 +65,7 @@ func (p *SMTP) Send(ctx context.Context, msg provider.Message) provider.Result {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_auth_method_invalid"}
 	}
 
-	mail, err := buildMessage(p.from, msg, p.htmlLayout)
+	mail, err := p.message(msg)
 	if err != nil {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "smtp_invalid_message"}
 	}
