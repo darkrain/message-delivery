@@ -5,11 +5,48 @@ import (
 	"io"
 	"mime/quotedprintable"
 	"net/mail"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/darkrain/message-delivery/internal/provider"
 )
+
+func TestMessageHasUniqueRFC5322Headers(t *testing.T) {
+	seen := make(map[string]bool)
+	for _, from := range []string{"no-reply@iamfree.in", "IAMFree <no-reply@iamfree.in>"} {
+		for i := 0; i < 2; i++ {
+			message, err := buildMessage(from, provider.Message{Recipient: "model@example.test", Subject: "Code", Body: "123456"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var wire bytes.Buffer
+			if _, err := message.WriteTo(&wire); err != nil {
+				t.Fatal(err)
+			}
+			parsed, err := mail.ReadMessage(&wire)
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := parsed.Header.Get("Message-ID")
+			if !regexp.MustCompile(`^<[0-9a-f]{32}@iamfree\.in>$`).MatchString(id) || seen[id] {
+				t.Fatalf("missing, invalid or reused Message-ID: %q", id)
+			}
+			seen[id] = true
+			if _, err := parsed.Header.Date(); err != nil {
+				t.Fatalf("invalid Date: %v", err)
+			}
+		}
+	}
+}
+
+func TestMessageRejectsInvalidSender(t *testing.T) {
+	for _, from := range []string{"", "not-an-address", "sender@example.test\r\nBcc: victim@example.test"} {
+		if _, err := buildMessage(from, provider.Message{}); err == nil {
+			t.Fatalf("accepted invalid sender %q", from)
+		}
+	}
+}
 
 func TestUnsubscribeHeadersAndFooter(t *testing.T) {
 	for _, contentType := range []string{"text/plain; charset=UTF-8", "text/html; charset=UTF-8"} {

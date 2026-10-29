@@ -1,8 +1,10 @@
 package email
 
 import (
+	"crypto/rand"
 	"fmt"
 	"html"
+	"net/mail"
 	"net/url"
 	"strings"
 
@@ -13,7 +15,19 @@ import (
 // Only explicit notification metadata enables unsubscribe. Transactional
 // authentication mail has no such metadata and remains unchanged.
 func buildMessage(from string, msg provider.Message, layouts ...string) (*gomail.Message, error) {
+	sender, err := mail.ParseAddress(from)
+	if err != nil {
+		return nil, fmt.Errorf("invalid sender address: %w", err)
+	}
+	// gomail supplies Date, but does not generate Message-ID. Receiving MTAs
+	// such as Gmail reject messages without this RFC 5322 identifier.
+	var identifier [16]byte
+	if _, err := rand.Read(identifier[:]); err != nil {
+		return nil, fmt.Errorf("generate message identifier: %w", err)
+	}
+	domain := sender.Address[strings.LastIndexByte(sender.Address, '@')+1:]
 	mail := gomail.NewMessage()
+	mail.SetHeader("Message-ID", fmt.Sprintf("<%x@%s>", identifier, domain))
 	mail.SetHeader("From", from)
 	mail.SetHeader("To", msg.Recipient)
 	mail.SetHeader("Subject", msg.Subject)
