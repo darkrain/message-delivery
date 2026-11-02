@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -172,6 +173,47 @@ func Load(path string) (*Config, error) {
 				return nil, fmt.Errorf("config: email layout requires one body and footer slot")
 			}
 			adapter["HTMLLayout"] = layout
+		}
+		if raw := adapter["Brands"]; raw != nil {
+			brands, ok := raw.(map[string]any)
+			if !ok || len(brands) == 0 {
+				return nil, fmt.Errorf("config: email Brands must be a nonempty object")
+			}
+			if _, ok := brands[adapter.String("DefaultBrand")]; !ok {
+				return nil, fmt.Errorf("config: email DefaultBrand is not configured")
+			}
+			for _, rawBrand := range brands {
+				value, ok := rawBrand.(map[string]any)
+				if !ok {
+					return nil, fmt.Errorf("config: invalid email brand")
+				}
+				brand := AdapterConfig(value)
+				if _, err := mail.ParseAddress(brand.String("From")); err != nil {
+					return nil, fmt.Errorf("config: invalid email brand From")
+				}
+				for _, key := range []string{"HTMLLayoutFile", "LogoFile"} {
+					name := brand.String(key)
+					if name == "" {
+						return nil, fmt.Errorf("config: email brand requires %s", key)
+					}
+					if !filepath.IsAbs(name) {
+						name = filepath.Join(cfg.Templates.BaseDir, name)
+					}
+					data, err := os.ReadFile(filepath.Clean(name))
+					if err != nil {
+						return nil, fmt.Errorf("config: read email brand %s: %w", key, err)
+					}
+					if key == "HTMLLayoutFile" {
+						layout := string(data)
+						if strings.Count(layout, "{{body}}") != 1 || strings.Count(layout, "{{footer}}") != 1 {
+							return nil, fmt.Errorf("config: invalid email brand layout")
+						}
+						brand["HTMLLayout"] = layout
+					} else {
+						brand["LogoFile"] = filepath.Clean(name)
+					}
+				}
+			}
 		}
 	}
 	if err := cfg.Validate(); err != nil {

@@ -37,7 +37,7 @@ func buildMessage(from string, msg provider.Message, layouts ...string) (*gomail
 	}
 	body := msg.Body
 	layout := ""
-	if len(layouts) > 0 && msg.Template != "notification_custom_html" {
+	if len(layouts) > 0 && (msg.Template != "notification_custom_html" || msg.Metadata["email_apply_brand_layout"] == "true") {
 		layout = layouts[0]
 	}
 	footer := ""
