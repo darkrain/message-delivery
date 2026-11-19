@@ -155,6 +155,21 @@
         },
         "RequiredVariables": ["code", "ttl_sec"]
       },
+      "auth_contact_changed": {
+        "Subject": {
+          "en": "Your sign-in e-mail was changed",
+          "ru": "Почта для входа изменена"
+        },
+        "TextBody": {
+          "en": "This e-mail was replaced with {{new_contact}} on your account. If you did not do this, contact support right away.",
+          "ru": "В вашем аккаунте эта почта заменена на {{new_contact}}. Если это сделали не вы, сразу напишите в поддержку."
+        },
+        "HtmlBodyFile": {
+          "en": "email/auth_contact_changed.en.html",
+          "ru": "email/auth_contact_changed.ru.html"
+        },
+        "RequiredVariables": ["new_contact"]
+      },
       "chat_message_notification": {
         "Subject": {
           "en": "New message from {{sender}}",
