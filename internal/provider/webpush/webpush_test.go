@@ -90,3 +90,29 @@ func validPushMessage(t *testing.T) provider.Message {
 		},
 	}
 }
+
+// Mozilla's push service counts the base64 of the encrypted record and
+// refuses past 4096 bytes; the library's default record made every push to
+// Firefox fail with 413 (alert 20.11). A long notice still fits.
+func TestProviderRecordFitsMozillaLimit(t *testing.T) {
+	privateKey, publicKey, err := webpushgo.GenerateVAPIDKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &responseClient{statusCode: http.StatusCreated}
+	sender := New("webpush", publicKey, privateKey, "notifications@example.test", 0)
+	sender.client = client
+	message := validPushMessage(t)
+	message.Metadata["push_title"] = strings.Repeat("Заголовок ", 40)
+	message.Metadata["push_body"] = strings.Repeat("Длинный текст уведомления. ", 200)
+	if result := sender.Send(context.Background(), message); result.Status != provider.StatusSent {
+		t.Fatalf("result = %#v", result)
+	}
+	body, err := io.ReadAll(client.request.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if encoded := base64.RawURLEncoding.EncodedLen(len(body)); encoded > 4096 {
+		t.Fatalf("encrypted record is %d bytes, base64 %d > 4096", len(body), encoded)
+	}
+}
