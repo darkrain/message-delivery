@@ -88,9 +88,11 @@ func (p *Provider) Send(ctx context.Context, message provider.Message) provider.
 	if !endpointAllowed(message.Recipient) {
 		return provider.Result{Status: provider.StatusUndeliverable, ErrorCode: "webpush_endpoint_rejected"}
 	}
+	// A notice longer than the record is cut, not refused: a phone shows a
+	// few lines of it anyway, and the app holds the whole text.
 	payload, err := json.Marshal(map[string]string{
-		"title":       first(message.Metadata["push_title"], message.Subject),
-		"body":        first(message.Metadata["push_body"], message.Body),
+		"title":       truncateRunes(first(message.Metadata["push_title"], message.Subject), webpushTitleLimit),
+		"body":        truncateRunes(first(message.Metadata["push_body"], message.Body), webpushBodyLimit),
 		"target_path": message.Metadata["push_target_path"],
 		"tag":         first(message.Metadata["push_tag"], message.EventID),
 	})
@@ -104,6 +106,11 @@ func (p *Provider) Send(ctx context.Context, message provider.Message) provider.
 		Keys:     webpushgo.Keys{P256dh: p256dh, Auth: authKey},
 	}, &webpushgo.Options{
 		HTTPClient: p.client, Subscriber: vapidSubscriber(p.subscriber), VAPIDPublicKey: p.vapidPublicKey, VAPIDPrivateKey: p.vapidPrivateKey, TTL: 60,
+		// The library pads every message to 4096 bytes; Mozilla's push service
+		// counts the base64 of the encrypted record and refuses anything past
+		// 4096, so every push to Firefox failed with 413 (alert 20.11). A record
+		// of 3070 bytes stays inside it; titles and bodies are far smaller.
+		RecordSize: webpushRecordSize,
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -135,4 +142,19 @@ func first(value, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+const (
+	webpushRecordSize = 3070
+	webpushTitleLimit = 120
+	webpushBodyLimit  = 600
+)
+
+// truncateRunes cuts a text to at most limit characters, marking the cut.
+func truncateRunes(text string, limit int) string {
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	return string(runes[:limit-1]) + "…"
 }
