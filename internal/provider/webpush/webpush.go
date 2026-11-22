@@ -1,6 +1,7 @@
 package webpush
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	webpushgo "github.com/SherClockHolmes/webpush-go"
 	"github.com/darkrain/message-delivery/internal/provider"
@@ -90,13 +92,13 @@ func (p *Provider) Send(ctx context.Context, message provider.Message) provider.
 	}
 	// A notice longer than the record is cut, not refused: a phone shows a
 	// few lines of it anyway, and the app holds the whole text.
-	payload, err := json.Marshal(map[string]string{
-		"title":       truncateRunes(first(message.Metadata["push_title"], message.Subject), webpushTitleLimit),
-		"body":        truncateRunes(first(message.Metadata["push_body"], message.Body), webpushBodyLimit),
-		"target_path": message.Metadata["push_target_path"],
-		"tag":         first(message.Metadata["push_tag"], message.EventID),
-	})
-	if err != nil {
+	payload, ok := pushPayload(
+		first(message.Metadata["push_title"], message.Subject),
+		first(message.Metadata["push_body"], message.Body),
+		message.Metadata["push_target_path"],
+		first(message.Metadata["push_tag"], message.EventID),
+	)
+	if !ok {
 		return provider.Result{Status: provider.StatusFailed, ErrorCode: "webpush_payload_invalid"}
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
@@ -106,10 +108,8 @@ func (p *Provider) Send(ctx context.Context, message provider.Message) provider.
 		Keys:     webpushgo.Keys{P256dh: p256dh, Auth: authKey},
 	}, &webpushgo.Options{
 		HTTPClient: p.client, Subscriber: vapidSubscriber(p.subscriber), VAPIDPublicKey: p.vapidPublicKey, VAPIDPrivateKey: p.vapidPrivateKey, TTL: 60,
-		// The library pads every message to 4096 bytes; Mozilla's push service
-		// counts the base64 of the encrypted record and refuses anything past
-		// 4096, so every push to Firefox failed with 413 (alert 20.11). A record
-		// of 3070 bytes stays inside it; titles and bodies are far smaller.
+		// The library pads every message to the record size, and the encrypted
+		// body is exactly that long. See webpushRecordSize for the budget.
 		RecordSize: webpushRecordSize,
 	})
 	if err != nil {
@@ -144,17 +144,76 @@ func first(value, fallback string) string {
 	return fallback
 }
 
+// Mozilla's push service refuses a message whose base64 data, together with
+// what it stores alongside, passes 4096 bytes. A record of 4096 bytes failed
+// every push to Firefox (alert 20.11); one of 3070 - base64 4094 - still came
+// back 413 "too long by 73 bytes" (alert 21.11), so the service counts about
+// 75 bytes beyond the base64 of the body. The record is sized for that
+// overhead plus a margin of 128 bytes:
+//
+//	base64(recordSize) + 75 + 128 <= 4096  =>  recordSize <= 2919
+//
+// 2900 leaves base64 3867 bytes, 154 bytes under the observed limit. The
+// plaintext a record carries is recordSize minus the 16-byte tag, the 86-byte
+// aes128gcm header and the padding delimiter.
 const (
-	webpushRecordSize = 3070
-	webpushTitleLimit = 120
-	webpushBodyLimit  = 600
+	mozillaPushDataLimit    = 4096
+	mozillaPushOverhead     = 75
+	webpushRecordSize       = 2900
+	webpushRecordHeaderSize = 16 + 4 + 1 + 65
+	webpushPlaintextLimit   = webpushRecordSize - 16 - webpushRecordHeaderSize - 1
+	webpushTitleLimit       = 120
+	webpushBodyLimit        = 600
 )
+
+// pushPayload writes the notice the service worker reads, cut to fit the
+// record. The rune limits keep an ordinary notice short; a text of wide
+// characters (emoji are 4 bytes each) can still outgrow the record, so the
+// body is cut further, then the title, until the JSON fits. It is false only
+// when even an empty text does not fit - a target path or tag of kilobytes.
+func pushPayload(title, body, targetPath, tag string) ([]byte, bool) {
+	title, body = truncateRunes(title, webpushTitleLimit), truncateRunes(body, webpushBodyLimit)
+	for {
+		payload, err := encodePushPayload(map[string]string{"title": title, "body": body, "target_path": targetPath, "tag": tag})
+		if err != nil {
+			return nil, false
+		}
+		overflow := len(payload) - webpushPlaintextLimit
+		if overflow <= 0 {
+			return payload, true
+		}
+		// Every rune is at least one byte; the mark of the cut adds three.
+		switch bodyRunes, titleRunes := utf8.RuneCountInString(body), utf8.RuneCountInString(title); {
+		case bodyRunes > 0:
+			body = truncateRunes(body, bodyRunes-overflow-3)
+		case titleRunes > 1:
+			title = truncateRunes(title, titleRunes-overflow-3)
+		default:
+			return nil, false
+		}
+	}
+}
+
+// encodePushPayload keeps <, > and & as they are: JSON.parse in the service
+// worker reads them either way, and escaped they take six bytes each.
+func encodePushPayload(value map[string]string) ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buffer.Bytes(), "\n"), nil
+}
 
 // truncateRunes cuts a text to at most limit characters, marking the cut.
 func truncateRunes(text string, limit int) string {
 	runes := []rune(text)
 	if len(runes) <= limit {
 		return text
+	}
+	if limit <= 1 {
+		return ""
 	}
 	return string(runes[:limit-1]) + "…"
 }
